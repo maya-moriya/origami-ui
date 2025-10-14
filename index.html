@@ -139,9 +139,14 @@
             border-color: #dc2626;
         }
         
-        .action-button svg {
+        .action-button svg,
+        .action-button img {
             width: 24px;
             height: 24px;
+        }
+        
+        .action-button img {
+            object-fit: contain;
         }
         
         .flip-button svg {
@@ -218,24 +223,13 @@
             <h2>Actions</h2>
             <div class="action-buttons">
                 <button class="action-button flip-button" id="flip-btn" data-tooltip="Flip">
-                    <svg viewBox="0 0 100 100" fill="#374151">
-                        <!-- Flip icon: double curved arrows like second reference -->
-                        <path d="M20 30 C20 15, 35 15, 50 15 C65 15, 80 15, 80 30 L75 25 L80 30 L75 35 M80 70 C80 85, 65 85, 50 85 C35 85, 20 85, 20 70 L25 75 L20 70 L25 65" stroke-width="8" fill="none" stroke="#374151"/>
-                    </svg>
+                    <img src="icons/flip.png" alt="Flip"/>
                 </button>
                 <button class="action-button undo-button" id="undo-btn" data-tooltip="Undo">
-                    <svg viewBox="0 0 24 24" stroke-width="2.5">
-                        <!-- Turning/undo arrow -->
-                        <path d="M9 14 4 9l5-5"/>
-                        <path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/>
-                    </svg>
+                    <img src="icons/undo.png" alt="Undo"/>
                 </button>
                 <button class="action-button reset-button" id="reset-btn" data-tooltip="Reset">
-                    <svg viewBox="0 0 100 100" fill="white">
-                        <!-- Reset icon: circular arrow with gap and rounded arrow head like first reference -->
-                        <path d="M50 15 A35 35 0 1 1 25 65" stroke-width="12" fill="none" stroke="white" stroke-linecap="round"/>
-                        <path d="M25 50 L35 40 L35 50 L45 50 L35 60 L25 50" fill="white"/>
-                    </svg>
+                    <img src="icons/reset.png" alt="Reset"/>
                 </button>
             </div>
             
@@ -253,7 +247,6 @@
                 <strong>Vertices:</strong> <span id="vertex-list">1, 2, 3, 4</span>
             </div>
         </div>
-    </div>
     </div>
     
     <script src="app.js"></script>

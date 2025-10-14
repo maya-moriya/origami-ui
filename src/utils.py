@@ -33,6 +33,9 @@ def sign(x):
 def point_position_to_line(point, line):
     A, B, C = line
     d = A * point[0] + B * point[1] + C
+    EPSILON = 1e-5
+    if abs(d) < EPSILON:
+        return 0
     return sign(d)
 
 def segment_line_intersection(line, segment):

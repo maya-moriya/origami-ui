@@ -58,6 +58,10 @@ def index():
 def app_js():
     return send_from_directory('.', 'app.js')
 
+@app.route('/icons/<filename>')
+def serve_icon(filename):
+    return send_from_directory('icons', filename)
+
 @app.route('/api/state', methods=['GET'])
 def get_state():
     """Get current origami state"""
@@ -81,21 +85,44 @@ def split_edge():
     edge = tuple(data['edge'])
     ratio = data.get('ratio', 0.5)
     
+    print(f"\n=== SPLIT REQUEST ===")
+    print(f"Edge to split: {edge}")
+    print(f"Ratio: {ratio}")
+    print(f"Current vertices: {dict(origami.vertices)}")
+    print(f"Current faces: {origami.faces}")
+    print(f"All edges: {list(origami._get_all_edges())}")
+    
+    # Check if edge exists
+    all_edges = list(origami._get_all_edges())
+    if edge not in all_edges and tuple(reversed(edge)) not in all_edges:
+        print(f"ERROR: Edge {edge} not found in all_edges!")
+        return jsonify({
+            'success': False,
+            'error': f'Edge {edge} does not exist'
+        })
+    
     save_state()
     try:
+        print(f"Attempting to split edge {edge} at ratio {ratio}")
         new_vid = origami.split_face_by_edge_and_ratio(edge, ratio)
+        print(f"Split successful, new vertex ID: {new_vid}")
+        print(f"New vertices: {dict(origami.vertices)}")
         return jsonify({
             'success': True,
             'new_vertex': new_vid,
             'state': get_origami_data()
         })
     except Exception as e:
+        print(f"Split error: {type(e).__name__}: {str(e)}")
+        import traceback
+        print(f"Full traceback: {traceback.format_exc()}")
+        
         # Restore previous state on error
         if history:
             restore_state(history.pop())
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': f'{type(e).__name__}: {str(e)}'
         })
 
 @app.route('/api/fold', methods=['POST'])

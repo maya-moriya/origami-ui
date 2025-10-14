@@ -24,7 +24,6 @@ class OrigamiUI {
         this.flashingVertices = false;
         this.mousePos = { x: 0, y: 0 };
         this.hoveredDragTarget = null;
-        this.lastDataHash = null; // Track when data changes
         
         // Special ratios to highlight
         this.specialRatios = [
@@ -57,118 +56,24 @@ class OrigamiUI {
         this.canvas.style.width = width + 'px';
         this.canvas.style.height = height + 'px';
         
-        // Calculate scale based on origami bounds
-        this.calculateOptimalScale(width, height);
+        // Calculate static scale using 50% of screen size
+        this.calculateStaticScale(width, height);
         
         // Scale vertex radius based on the scale factor
         this.vertexRadius = Math.max(8, Math.min(16, this.scale * 0.15));
     }
     
-    calculateOptimalScale(canvasWidth, canvasHeight) {
-        if (!this.origamiData || !this.origamiData.faces) {
-            // Fallback to default centering if no data
-            const minDimension = Math.min(canvasWidth, canvasHeight);
-            const margin = minDimension * 0.1;
-            this.scale = (minDimension - 2 * margin) / 10;
-            // Center around (5, 5) which is the middle of the default 10x10 space
-            this.offsetX = canvasWidth / 2 - 5 * this.scale;
-            this.offsetY = canvasHeight / 2 + 5 * this.scale; // Flip Y for canvas
-            return;
-        }
+    calculateStaticScale(canvasWidth, canvasHeight) {
+        // Static centering - use 50% of screen size for a fixed coordinate space
+        const minDimension = Math.min(canvasWidth, canvasHeight);
+        const useableSize = minDimension * 0.5; // 50% of screen size
+        this.scale = useableSize / 10; // 10 units range (0 to 10)
         
-        // Calculate the center and bounds of all faces
-        const faceCenter = this.calculateFacesCenter();
-        const bounds = this.calculateOrigamiBounds();
-        
-        // Calculate optimal scale to fit the origami with margins
-        const margin = Math.min(canvasWidth, canvasHeight) * 0.1;
-        const availableWidth = canvasWidth - 2 * margin;
-        const availableHeight = canvasHeight - 2 * margin;
-        
-        const origamiWidth = bounds.maxX - bounds.minX;
-        const origamiHeight = bounds.maxY - bounds.minY;
-        
-        // Use the scale that fits both width and height
-        const scaleX = origamiWidth > 0 ? availableWidth / origamiWidth : availableWidth / 10;
-        const scaleY = origamiHeight > 0 ? availableHeight / origamiHeight : availableHeight / 10;
-        this.scale = Math.min(scaleX, scaleY);
-        
-        // Center the origami based on its current face center
-        this.offsetX = canvasWidth / 2 - faceCenter.x * this.scale;
-        this.offsetY = canvasHeight / 2 + faceCenter.y * this.scale; // Flip Y for canvas
+        // Center the coordinate system around (5, 5) which is middle of 0-10 range
+        this.offsetX = canvasWidth / 2 - 5 * this.scale;
+        this.offsetY = canvasHeight / 2 + 5 * this.scale; // Flip Y for canvas
     }
     
-    calculateFacesCenter() {
-        if (!this.origamiData || !this.origamiData.faces) {
-            return { x: 5, y: 5 }; // Default center
-        }
-        
-        let totalX = 0;
-        let totalY = 0;
-        let faceCount = 0;
-        
-        // Calculate center of each face and average them
-        for (const [faceId, face] of Object.entries(this.origamiData.faces)) {
-            if (!face || face.length === 0) continue;
-            
-            // Calculate centroid of this face
-            let faceX = 0;
-            let faceY = 0;
-            
-            for (const vid of face) {
-                const vertex = this.origamiData.vertices[vid];
-                if (vertex) {
-                    faceX += vertex[0];
-                    faceY += vertex[1];
-                }
-            }
-            
-            faceX /= face.length;
-            faceY /= face.length;
-            
-            totalX += faceX;
-            totalY += faceY;
-            faceCount++;
-        }
-        
-        if (faceCount === 0) {
-            return { x: 5, y: 5 }; // Default center
-        }
-        
-        return {
-            x: totalX / faceCount,
-            y: totalY / faceCount
-        };
-    }
-    
-    calculateOrigamiBounds() {
-        if (!this.origamiData || !this.origamiData.vertices) {
-            return { minX: 0, maxX: 10, minY: 0, maxY: 10 }; // Default bounds
-        }
-        
-        let minX = Infinity;
-        let maxX = -Infinity;
-        let minY = Infinity;
-        let maxY = -Infinity;
-        
-        for (const vertex of Object.values(this.origamiData.vertices)) {
-            minX = Math.min(minX, vertex[0]);
-            maxX = Math.max(maxX, vertex[0]);
-            minY = Math.min(minY, vertex[1]);
-            maxY = Math.max(maxY, vertex[1]);
-        }
-        
-        // Add small padding to bounds
-        const paddingX = (maxX - minX) * 0.05;
-        const paddingY = (maxY - minY) * 0.05;
-        
-        return {
-            minX: minX - paddingX,
-            maxX: maxX + paddingX,
-            minY: minY - paddingY,
-            maxY: maxY + paddingY
-        };
-    }
     
     setupEventListeners() {
         // Canvas events
@@ -185,7 +90,6 @@ class OrigamiUI {
         // Window resize
         window.addEventListener('resize', () => {
             this.resizeCanvas();
-            this.lastDataHash = null; // Force recalculation on resize
             this.draw();
         });
     }
@@ -251,12 +155,8 @@ class OrigamiUI {
     draw() {
         if (!this.origamiData) return;
         
-        // Check if data has changed and recalculate positioning if needed
-        const currentDataHash = this.getDataHash();
-        if (currentDataHash !== this.lastDataHash) {
-            this.calculateOptimalScale(this.canvas.width, this.canvas.height);
-            this.lastDataHash = currentDataHash;
-        }
+        // Always use static scale (no need for data change detection)
+        this.calculateStaticScale(this.canvas.width, this.canvas.height);
         
         // Clear canvas with white background
         this.ctx.fillStyle = '#ffffff';
@@ -282,14 +182,6 @@ class OrigamiUI {
         this.drawSelectionOverlay();
     }
     
-    getDataHash() {
-        if (!this.origamiData) return null;
-        // Simple hash of face and vertex data to detect changes
-        return JSON.stringify({
-            faces: this.origamiData.faces,
-            vertices: this.origamiData.vertices
-        });
-    }
     
     getSortedFaces() {
         const faces = [];
@@ -375,6 +267,10 @@ class OrigamiUI {
     }
     
     groupVerticesByPosition() {
+        if (!this.origamiData || !this.origamiData.vertices) {
+            return [];
+        }
+        
         const tolerance = 1e-6; // Small tolerance for floating-point precision
         const groups = [];
         const processed = new Set();
@@ -523,6 +419,10 @@ class OrigamiUI {
             } else {
                 fillColor = 'rgba(239, 68, 68, 0.4)'; // Normal red for other states
             }
+        }
+        // Hovered edge vertices (show which edge will be split)
+        else if (this.hoveredEdge && (this.hoveredEdge.includes(vertexId))) {
+            fillColor = 'rgba(239, 68, 68, 0.2)'; // Light red for hovered edge vertices
         }
         // Drag states
         else if ((this.dragStartVertex === vertexId) || (this.dragEndVertex === vertexId)) {
@@ -698,6 +598,9 @@ class OrigamiUI {
     
     findEdgeAt(pos) {
         const threshold = 10; // pixels
+        let bestMatch = null;
+        let bestDistance = Infinity;
+        let highestLayer = -1;
         
         for (const edge of this.origamiData.all_edges) {
             const v1 = this.origamiData.vertices[edge[0]];
@@ -708,10 +611,37 @@ class OrigamiUI {
             
             const result = this.distanceAndRatioToLineSegment(pos, p1, p2);
             if (result.distance <= threshold) {
-                return { edge, ratio: result.ratio };
+                // Find the highest layer that contains this edge
+                const edgeLayer = this.getHighestLayerForEdge(edge);
+                
+                // Prioritize by layer first, then by distance if same layer
+                if (edgeLayer > highestLayer || 
+                    (edgeLayer === highestLayer && result.distance < bestDistance)) {
+                    bestMatch = { edge, ratio: result.ratio };
+                    bestDistance = result.distance;
+                    highestLayer = edgeLayer;
+                }
             }
         }
-        return null;
+        return bestMatch;
+    }
+    
+    getHighestLayerForEdge(edge) {
+        let highestLayer = 0;
+        
+        // Find all faces that contain this edge
+        for (const [faceId, face] of Object.entries(this.origamiData.faces)) {
+            if (face.includes(edge[0]) && face.includes(edge[1])) {
+                // Find which layer this face is in
+                for (const [layerNum, facesInLayer] of Object.entries(this.origamiData.layers)) {
+                    if (facesInLayer.includes(parseInt(faceId))) {
+                        highestLayer = Math.max(highestLayer, parseInt(layerNum));
+                        break;
+                    }
+                }
+            }
+        }
+        return highestLayer;
     }
     
     distanceToLineSegment(point, lineStart, lineEnd) {
@@ -790,9 +720,12 @@ class OrigamiUI {
             // Check if vertex is not on the selected edge
             if (vertex !== this.selectedEdge[0] && vertex !== this.selectedEdge[1]) {
                 this.foldOnCrease(this.selectedEdge, vertex);
-                this.resetInteractionState();
             } else {
                 this.updateStatus('Select a vertex not on the fold line');
+            }
+        } else {
+            if (!vertex) {
+                this.updateStatus('Click on a vertex to fold');
             }
         }
     }
@@ -865,6 +798,10 @@ class OrigamiUI {
     }
     
     updateHoverStates() {
+        if (!this.origamiData) {
+            return;
+        }
+        
         this.hoveredVertex = null;
         this.hoveredEdge = null;
         this.hoveredEdgeRatio = 0.5;
@@ -960,6 +897,7 @@ class OrigamiUI {
             if (result.success) {
                 this.origamiData = result.state;
                 this.updateVertexList();
+                this.resetInteractionState();
                 this.updateStatus('Fold completed successfully!');
             } else {
                 this.updateStatus(`Error: ${result.error}`);

@@ -393,17 +393,24 @@ class Origami:
         vids_position_map = {}
         for vid in self.vertices.keys():
             position = self._get_vertex_position_to_line(vid, line)
+            logging.debug(f" Vertex {vid} position to line: {position}")
             vids_position_map[vid] = position
         logging.debug(f"Vertices position map: {vids_position_map}")
         return vids_position_map
 
     def fold_preparations(self, edge):
+        logging.info(f" Preparing to fold along edge {edge}")
         v1_id, v2_id = edge
         line = self._get_line_equation(v1_id, v2_id)
         vids_position_map = self._vids_position_map(line)
+        logging.debug(f" Vertices position map: {vids_position_map}")
         fids_layer_map = self._face_layer_map()
         faces_split_info = {}
         for fid, face in self.faces.items():
+            if len(self.vertices) > len(vids_position_map):
+                logging.debug(" Updating vertices position map...")
+                vids_position_map = self._vids_position_map(line)
+            logging.debug(f" Preparing face {fid}: {face}")
             faces_split_info[fid] = {"crease": None,
                                     "split": False,
                                     "lid": fids_layer_map[fid],
@@ -412,10 +419,13 @@ class Origami:
             for vid in face:
                 position = vids_position_map[vid]
                 faces_split_info[fid]["vertices"][position].add(vid)
+                logging.debug(f"    Vertex {vid} is on the {position} side of the line.")
             if v1_id in face and v2_id in face:
                 faces_split_info[fid]['crease'] = tuple(sorted((v1_id, v2_id)))
+                logging.debug(f"    Found crease in face {fid}: {faces_split_info[fid]['crease']}")
             else:
                 faces_split_info[fid]['crease'] = self._cut_face_along_line(line, fid)
+                logging.debug(f"    Cut face {fid} along line, found intersection vertices: {faces_split_info[fid]['crease']}")
 
             if len(faces_split_info[fid]["vertices"][1]) > 0 and len(faces_split_info[fid]["vertices"][-1]) > 0:
                 faces_split_info[fid]['split'] = True
@@ -427,12 +437,15 @@ class Origami:
                 else:
                     faces_split_info[fid]["faces"][1] = face2
                     faces_split_info[fid]["faces"][-1] = face1
+                logging.debug(f"    Face {fid} will be split into two faces: {face1} and {face2}")
 
             elif len(faces_split_info[fid]["vertices"][1]) > 0:
                 faces_split_info[fid]["faces"][1] = face
+                logging.debug(f"    All vertices of face {fid} are on the positive side of the line.")
 
             elif len(faces_split_info[fid]["vertices"][-1]) > 0:
                 faces_split_info[fid]["faces"][-1] = face
+                logging.debug(f"    All vertices of face {fid} are on the negative side of the line.")
             else:
                 raise ValueError("Face has no vertices on either side of the line.")
         return line, faces_split_info
