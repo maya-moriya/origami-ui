@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Origami Simulator</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: white;
+            overflow: hidden;
+            height: 100vh;
+        }
+        
+        .container {
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+        }
+        
+        .canvas-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+        }
+        
+        #origami-canvas {
+            cursor: crosshair;
+        }
+        
+        .controls {
+            width: 280px;
+            background: white;
+            padding: 24px;
+            border-left: 1px solid #e1e5e9;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        h2 {
+            color: #1f2937;
+            font-size: 16px;
+            font-weight: 600;
+            margin: 0;
+            margin-bottom: 16px;
+        }
+        
+        .mode-selector {
+            margin-bottom: 20px;
+        }
+        
+        .mode-button {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 8px;
+            border: 2px solid #ddd;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        
+        .mode-button:hover {
+            background: #f0f0f0;
+        }
+        
+        .mode-button.active {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+        
+        .action-buttons {
+            margin-bottom: 20px;
+        }
+        
+        .action-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        
+        .action-button {
+            width: 50px;
+            height: 50px;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .action-button:hover {
+            transform: translateY(-2px) scale(1.05);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.15);
+        }
+        
+        .action-button:active {
+            transform: translateY(-1px) scale(1.02);
+        }
+        
+        .flip-button {
+            background: white;
+            border: 2px solid #f3f4f6;
+        }
+        
+        .flip-button:hover {
+            border-color: #d1d5db;
+        }
+        
+        .undo-button {
+            background: white;
+            border: 2px solid #f3f4f6;
+        }
+        
+        .undo-button:hover {
+            border-color: #d1d5db;
+        }
+        
+        .reset-button {
+            background: #ef4444;
+            border: 2px solid #ef4444;
+        }
+        
+        .reset-button:hover {
+            background: #dc2626;
+            border-color: #dc2626;
+        }
+        
+        .action-button svg {
+            width: 24px;
+            height: 24px;
+        }
+        
+        .flip-button svg {
+            /* Filled icons */
+        }
+        
+        .undo-button svg {
+            stroke: #374151;
+            fill: none;
+        }
+        
+        .reset-button svg {
+            /* Filled icons */
+        }
+        
+        /* Tooltip styles */
+        .action-button::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: -35px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+        }
+        
+        .action-button:hover::after {
+            opacity: 1;
+        }
+        
+        .status {
+            padding: 12px 16px;
+            background: #f3f4f6;
+            border-radius: 8px;
+            font-size: 14px;
+            color: #374151;
+            border-left: 3px solid #3b82f6;
+        }
+        
+        .fold-selection {
+            padding: 12px 16px;
+            background: #fef3c7;
+            border-radius: 8px;
+            font-size: 14px;
+            color: #92400e;
+            border-left: 3px solid #f59e0b;
+        }
+        
+        .vertex-info {
+            font-size: 13px;
+            color: #6b7280;
+        }
+        
+        .vertex-info strong {
+            color: #374151;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="canvas-container">
+            <canvas id="origami-canvas"></canvas>
+        </div>
+        
+        <div class="controls">
+            <h2>Actions</h2>
+            <div class="action-buttons">
+                <button class="action-button flip-button" id="flip-btn" data-tooltip="Flip">
+                    <svg viewBox="0 0 100 100" fill="#374151">
+                        <!-- Flip icon: double curved arrows like second reference -->
+                        <path d="M20 30 C20 15, 35 15, 50 15 C65 15, 80 15, 80 30 L75 25 L80 30 L75 35 M80 70 C80 85, 65 85, 50 85 C35 85, 20 85, 20 70 L25 75 L20 70 L25 65" stroke-width="8" fill="none" stroke="#374151"/>
+                    </svg>
+                </button>
+                <button class="action-button undo-button" id="undo-btn" data-tooltip="Undo">
+                    <svg viewBox="0 0 24 24" stroke-width="2.5">
+                        <!-- Turning/undo arrow -->
+                        <path d="M9 14 4 9l5-5"/>
+                        <path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/>
+                    </svg>
+                </button>
+                <button class="action-button reset-button" id="reset-btn" data-tooltip="Reset">
+                    <svg viewBox="0 0 100 100" fill="white">
+                        <!-- Reset icon: circular arrow with gap and rounded arrow head like first reference -->
+                        <path d="M50 15 A35 35 0 1 1 25 65" stroke-width="12" fill="none" stroke="white" stroke-linecap="round"/>
+                        <path d="M25 50 L35 40 L35 50 L45 50 L35 60 L25 50" fill="white"/>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="status" id="status">
+                Ready - Click on edges to add vertices, or drag between vertices to fold
+            </div>
+            
+            <div class="fold-selection" id="fold-selection" style="display: none;">
+                <strong>Fold Selection</strong><br>
+                Line: <span id="selected-edge">None</span><br>
+                <span id="fold-instruction">Click on a vertex to choose which side to fold</span>
+            </div>
+            
+            <div class="vertex-info" id="vertex-info">
+                <strong>Vertices:</strong> <span id="vertex-list">1, 2, 3, 4</span>
+            </div>
+        </div>
+    </div>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>
