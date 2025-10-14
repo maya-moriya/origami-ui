@@ -450,7 +450,8 @@ class Origami:
         while last_iteration != faces_to_fold:
             last_iteration = faces_to_fold.copy()
             for fid in list(last_iteration):
-                for vid in self.faces[fid]:
+                logging.debug(f" Checking adjacent faces for face {fid}: {faces_split_info[fid]['vertices'][pos_to_fold]}")
+                for vid in list(faces_split_info[fid]['vertices'][pos_to_fold]):
                     for adjacent_fid in vertices_faces_map[vid]:
                         logging.debug(f" {adjacent_fid} is adjacent to {fid} through vertex {vid}")
                         faces_to_fold.add(adjacent_fid)
