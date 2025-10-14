@@ -3,6 +3,17 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 import math
 from src.utils import *
+import logging
+
+logging.basicConfig(
+    level=logging.DEBUG, # Set the minimum level to display messages
+    format='%(levelname)s | %(funcName)s | %(message)s'
+)
+
+DEBUG_MODE = True
+
+if not DEBUG_MODE:
+    logging.basicConfig(level=logging.WARNING)
 
 class Origami:
     def __init__(self, size=10.0):
@@ -53,8 +64,8 @@ class Origami:
     def _note_split(self, edge, ratio):
         self.actions.append({"action": "split", "edge": edge, "ratio": ratio})
 
-    def _note_fold(self, edge, vertex):
-        self.actions.append({"action": "fold", "edge": edge, "vertex": vertex})
+    def _note_fold(self, edge, side):
+        self.actions.append({"action": "fold", "edge": edge, "side": side})
     
     def _edges_of_face(self, fid):
         if fid not in self.faces:
@@ -167,7 +178,7 @@ class Origami:
         else:
             self.layers[lid] = [fid]
     
-    def _vertices_position_map_to_line(self, vertices, line):
+    def _vertices_positions_list(self, vertices, line):
         position_map = {1: set(), -1: set(), 0: set()}
         for vid in vertices:
             position = self._get_vertex_position_to_line(vid, line)
@@ -177,61 +188,61 @@ class Origami:
     def _get_vertices_of_face_position_to_line(self, fid, line):
         self._check_fid_exists(fid)
         face = self.faces[fid]
-        return self._vertices_position_map_to_line(face, line)
+        return self._vertices_positions_list(face, line)
 
-    def _get_faces_on_side_of_line(self, line, side):
-        if side not in [1, -1]:
-            raise ValueError("Side must be 1 (left) or -1 (right).")
-        faces_on_side = set()
-        for fid in self.faces.keys():
-            position_map = self._get_vertices_of_face_position_to_line(fid, line)
-            if len(position_map[side]) > 0:
-                faces_on_side.add(fid)
-        return faces_on_side
+    # def _get_faces_on_side_of_line(self, line, side):
+    #     if side not in [1, -1]:
+    #         raise ValueError("Side must be 1 (left) or -1 (right).")
+    #     faces_on_side = set()
+    #     for fid in self.faces.keys():
+    #         position_map = self._get_vertices_of_face_position_to_line(fid, line)
+    #         if len(position_map[side]) > 0:
+    #             faces_on_side.add(fid)
+    #     return faces_on_side
     
-    def _get_lowers_layer_in_faces(self, faces):
+    def _get_min_layer_in_faces(self, faces):
         face_layer_map = self._face_layer_map()
         min_layer = min([face_layer_map[fid] for fid in faces])
         return min_layer
     
-    def _get_faces_obove_minimal_layer_that_the_line_crosses(self, line, min_layer, pos):
-        faces_on_side = self._get_faces_on_side_of_line(line, pos)
-        print(f"Faces that exists on the {pos} side of the line: {faces_on_side}")
-        if not faces_on_side:
-            return set()
-        print(f" Minimal layer among these faces: {min_layer}")
-        face_layer_map = self._face_layer_map()
-        faces_above_min_layer = {fid for fid in faces_on_side if face_layer_map[fid] >= min_layer}
-        print("Faces above minimal layer that the line crosses:", faces_above_min_layer)
-        return faces_above_min_layer
+    # def _get_faces_obove_minimal_layer_that_the_line_crosses(self, line, min_layer, pos):
+    #     faces_on_side = self._get_faces_on_side_of_line(line, pos)
+    #     # print(f"Faces that exists on the {pos} side of the line: {faces_on_side}")
+    #     if not faces_on_side:
+    #         return set()
+    #     # print(f" Minimal layer among these faces: {min_layer}")
+    #     face_layer_map = self._face_layer_map()
+    #     faces_above_min_layer = {fid for fid in faces_on_side if face_layer_map[fid] >= min_layer}
+    #     # print("Faces above minimal layer that the line crosses:", faces_above_min_layer)
+    #     return faces_above_min_layer
 
-    def _get_chained_faces(self, start_fids, line, pos):
-        vids = set()
-        last_vids = None
-        fids = set(start_fids)
-        vid_face_map = self._face_vertex_map()
-        iteration = 0
-        while vids != last_vids:
-            print(f"Interation {iteration}: fids={fids}, vids={vids}")
-            last_vids = vids.copy()
-            for fid in fids:
-                position = self._get_vertices_of_face_position_to_line(fid, line)[pos]
-                for vid in position:
-                    if vid not in vids:
-                        vids.add(vid)
-                        print(f" Added vertex {vid} from face {fid}")
-            for vid in vids:
-                faces_of_vid = vid_face_map[vid]
-                for fid in faces_of_vid:
-                    if fid not in fids:
-                        fids.add(fid)
-                        print(f" Added face {fid} from vertex {vid}")
-            min_layer = self._get_lowers_layer_in_faces(fids)
-            faces_above_min_layer = self._get_faces_obove_minimal_layer_that_the_line_crosses(line, min_layer, pos)
-            print(f"Faces above minimal layer that the line crosses: {faces_above_min_layer}")
-            fids = fids.union(faces_above_min_layer)
-            iteration += 1
-        return fids, vids
+    # def _get_chained_faces(self, start_fids, line, pos):
+    #     vids = set()
+    #     last_vids = None
+    #     fids = set(start_fids)
+    #     vid_face_map = self._face_vertex_map()
+    #     iteration = 0
+    #     while vids != last_vids:
+    #         # print(f"Interation {iteration}: fids={fids}, vids={vids}")
+    #         last_vids = vids.copy()
+    #         for fid in fids:
+    #             position = self._get_vertices_of_face_position_to_line(fid, line)[pos]
+    #             for vid in position:
+    #                 if vid not in vids:
+    #                     vids.add(vid)
+    #                     # print(f" Added vertex {vid} from face {fid}")
+    #         for vid in vids:
+    #             faces_of_vid = vid_face_map[vid]
+    #             for fid in faces_of_vid:
+    #                 if fid not in fids:
+    #                     fids.add(fid)
+    #                     # print(f" Added face {fid} from vertex {vid}")
+    #         min_layer = self._get_lowers_layer_in_faces(fids)
+    #         faces_above_min_layer = self._get_faces_obove_minimal_layer_that_the_line_crosses(line, min_layer, pos)
+    #         # print(f"Faces above minimal layer that the line crosses: {faces_above_min_layer}")
+    #         fids = fids.union(faces_above_min_layer)
+    #         iteration += 1
+    #     return fids, vids
     
     def _sort_faces_by_layers(self, faces, reverse=True):
         fids = list(faces)
@@ -289,139 +300,274 @@ class Origami:
             return None
         
         return tuple(sorted(vertices))
+
+    # def find_initial_faces(self, line, vertex_to_fold, pos_to_fold):
+    #     faces = []
+    #     for fid, face in self.faces.items():
+    #         if vertex_to_fold in face:
+    #             # print(f"face {face} includes vertex {vertex_to_fold}")
+    #             position_map = self._vertices_positions_list(face, line)
+    #             if len(position_map[pos_to_fold]) > 0 and len(position_map[-pos_to_fold]) > 0:
+    #                 # print(f"face {face} is crossed by the line")
+    #                 faces.append(fid)
+    #     # print(f"Initial faces found: {faces}")
+    #     return faces
     
+    # def get_folding_list(self, edge, vertex_to_fold):
 
-    def find_initial_faces(self, line, vertex_to_fold, pos_to_fold):
-        faces = []
+    def get_crease_faces(self, v1_id, v2_id):
+        faces_with_both = []
+        faces_with_one = []
         for fid, face in self.faces.items():
-            if vertex_to_fold in face:
-                print(f"face {face} includes vertex {vertex_to_fold}")
-                position_map = self._vertices_position_map_to_line(face, line)
-                if len(position_map[pos_to_fold]) > 0 and len(position_map[-pos_to_fold]) > 0:
-                    print(f"face {face} is crossed by the line")
-                    faces.append(fid)
-        print(f"Initial faces found: {faces}")
-        return faces
+            if v1_id in face and v2_id in face:
+                faces_with_both.append(fid)
+            elif v1_id in face or v2_id in face:
+                faces_with_one.append(fid)
+        if len(faces_with_both) > 0:
+            logging.debug(f"Found crease faces with both vertices: {[self.faces[fid] for fid in faces_with_both]}")
+            return faces_with_both
+        if len(faces_with_one) > 0:
+            logging.debug(f"Found crease faces with one vertex: {[self.faces[fid] for fid in faces_with_one]}")
+            return faces_with_one
+        raise ValueError("No faces found containing either vertex of the edge.")
+    
+    # def split_faces_to_fold(self, line, edge, fids):
 
-    def fold_on_crease(self, edge, vertex_to_fold):
+    #     v1_id, v2_id = edge
+    #     face_layer_map = self._face_layer_map()
+    #     fids_to_cut = sorted(fids, key=lambda fid: face_layer_map[fid], reverse=True)
 
-        self._note_fold(edge, vertex_to_fold)
+    #     faces_map = {}
+    #     for fid in fids_to_cut:
 
-        edge = tuple(sorted(edge))
+    #         if v1_id in self.faces[fid] and v2_id in self.faces[fid]:
+    #             new_edge = edge
+    #         else:
+    #             new_edge = self._cut_face_along_line(line, fid)                    
 
+    #         if new_edge:
+
+    #             if self._edge_in_face(fid, new_edge):
+    #                 raise ValueError("The crease line coincides with an edge of a face to fold.")
+
+    #             new_v1_id, new_v2_id = new_edge
+
+    #             face1, face2 = self._split_face(fid, new_v1_id, new_v2_id)
+        
+    #             new_fid = max(self.faces.keys()) + 1
+    #             self.faces[fid] = face1
+    #             self.faces[new_fid] = face2
+
+    #             i = 0
+    #             while i < len(face1) and (face1[i] == new_v1_id or face1[i] == new_v2_id):
+    #                 i += 1
+    #             face1_pos = self._get_vertex_position_to_line(face1[i], line)
+
+    #             if face1_pos == 1:
+    #                 positive_face = fid
+    #                 negative_face = new_fid
+    #             else:
+    #                 positive_face = new_fid
+    #                 negative_face = fid   
+
+    #         else:
+    #             face_pos = self._get_vertex_position_to_line(self.faces[fid][0], line)
+    #             if face_pos == 1:
+    #                 positive_face = fid
+    #                 negative_face = None
+    #             else:
+    #                 positive_face = None
+    #                 negative_face = fid 
+                
+    #             # self.faces_orientations[new_fid] = 1 - self.faces_orientations[fid] TODO
+
+    #         faces_map[fid] = {
+    #             'edge': new_edge,
+    #             'layer': face_layer_map[fid],
+    #             'positive_face': positive_face,
+    #             'negative_face': negative_face,
+    #         }
+    #     return faces_map
+    
+    def _vids_position_map(self, line):
+        vids_position_map = {}
+        for vid in self.vertices.keys():
+            position = self._get_vertex_position_to_line(vid, line)
+            vids_position_map[vid] = position
+        logging.debug(f"Vertices position map: {vids_position_map}")
+        return vids_position_map
+
+    def fold_preparations(self, edge):
         v1_id, v2_id = edge
-
-        self._check_vid_exists(vertex_to_fold)
-        self._check_vid_exists(v1_id)
-        self._check_vid_exists(v2_id)
-        
         line = self._get_line_equation(v1_id, v2_id)
-        
-        fold_within_face = False
-        face_to_fold = self._find_face_crossed_by_edge_and_containing_vertex(edge, vertex_to_fold)
-        if face_to_fold is not None:
-            print(f"Folding within face {face_to_fold}")
-            fold_within_face = True
+        vids_position_map = self._vids_position_map(line)
+        fids_layer_map = self._face_layer_map()
+        faces_split_info = {}
+        for fid, face in self.faces.items():
+            faces_split_info[fid] = {"crease": None,
+                                    "split": False,
+                                    "lid": fids_layer_map[fid],
+                                    "vertices": {1: set(), 0: set(), -1: set()},
+                                    "faces": {1: None, -1: None}}
+            for vid in face:
+                position = vids_position_map[vid]
+                faces_split_info[fid]["vertices"][position].add(vid)
+            if v1_id in face and v2_id in face:
+                faces_split_info[fid]['crease'] = tuple(sorted((v1_id, v2_id)))
+            else:
+                faces_split_info[fid]['crease'] = self._cut_face_along_line(line, fid)
 
-            if self._edge_in_face(face_to_fold, edge):
-                raise ValueError("The crease line coincides with an edge of the face to fold.")
-        else:
-            face_to_fold = self._find_face_containing_one_side_of_the_edge_and_vertex(edge, vertex_to_fold)
-            if face_to_fold is not None:
-                print(f"Folding starting from face {face_to_fold} (includes one side of the edge and the vertex to fold)")
+            if len(faces_split_info[fid]["vertices"][1]) > 0 and len(faces_split_info[fid]["vertices"][-1]) > 0:
+                faces_split_info[fid]['split'] = True
+                crease_vid1, crease_vid2 = faces_split_info[fid]['crease']
+                face1, face2 = self._split_face(fid, crease_vid1, crease_vid2)
+                if list(faces_split_info[fid]["vertices"][1])[0] in face1:
+                    faces_split_info[fid]["faces"][1] = face1
+                    faces_split_info[fid]["faces"][-1] = face2
+                else:
+                    faces_split_info[fid]["faces"][1] = face2
+                    faces_split_info[fid]["faces"][-1] = face1
 
-        
+            elif len(faces_split_info[fid]["vertices"][1]) > 0:
+                faces_split_info[fid]["faces"][1] = face
+
+            elif len(faces_split_info[fid]["vertices"][-1]) > 0:
+                faces_split_info[fid]["faces"][-1] = face
+            else:
+                raise ValueError("Face has no vertices on either side of the line.")
+        return line, faces_split_info
+
+    def _get_faces_to_fold(self, faces_split_info, pos_to_fold, min_layer):
+        logging.info(f" Getting faces to fold on the {pos_to_fold} side above layer {min_layer}")
+        #return {fid for fid, info in faces_split_info.items() if (info['lid'] >= min_layer and info['faces'][pos_to_fold] is not None)}
+        faces_to_fold = set()
+        for fid, info in faces_split_info.items():
+            if info['lid'] >= min_layer and info['faces'][pos_to_fold] is not None:
+                logging.debug(f"  Adding face {fid} to fold list, since layer {info['lid']} >= {min_layer} and has vertices on the {pos_to_fold} side: {info['faces'][pos_to_fold]}")
+                faces_to_fold.add(fid)
+        vertices_faces_map = self._face_vertex_map()
+        last_iteration = None
+        while last_iteration != faces_to_fold:
+            last_iteration = faces_to_fold.copy()
+            for fid in list(last_iteration):
+                for vid in self.faces[fid]:
+                    for adjacent_fid in vertices_faces_map[vid]:
+                        logging.debug(f" {adjacent_fid} is adjacent to {fid} through vertex {vid}")
+                        faces_to_fold.add(adjacent_fid)
+        return faces_to_fold
+    
+    def fold_on_crease(self, edge, vertex_to_fold):
+        line = self._get_line_equation(*edge)
         pos_to_fold = self._get_vertex_position_to_line(vertex_to_fold, line)
+        self.fold_on_crease_by_side(edge, pos_to_fold)
 
+    def fold_on_crease_by_side(self, edge, pos_to_fold):
+        self._note_fold(edge, pos_to_fold)
+        line, faces_split_info = self.fold_preparations(edge)
+        v1_id, v2_id = edge
+        logging.debug(f" Folding along edge {edge} to the {pos_to_fold} side of the line.")
         if pos_to_fold == 'on':
             raise ValueError("Vertex to fold lies on the crease line.")
-
-
-        if face_to_fold is not None:
-            faces_to_fold = [face_to_fold]
-            print(f"Face to fold: {face_to_fold}, vertices: {self.faces[face_to_fold]}")
-        else:
-            print(f" No face contains both the edge and the vertex to fold. Finding initial faces...")
-            faces_to_fold = self.find_initial_faces(line, vertex_to_fold, 1)
-
-        print("Looking for chained faces...")
-        fids_to_cut, vids_to_reflect = self._get_chained_faces(faces_to_fold, line, pos_to_fold)
-
-        fids = list(fids_to_cut)
-        face_layer_map = self._face_layer_map()
-        fids_to_cut = sorted(fids, key=lambda fid: face_layer_map[fid], reverse=True)
-
-        faces_map = {}
-        for fid in fids_to_cut:
-            if fold_within_face and (fid == face_to_fold):
-                new_edge = edge
-            else:
-                new_edge = self._cut_face_along_line(line, fid)                    
-
-            if new_edge is not None:
-
-                if self._edge_in_face(fid, new_edge):
-                    raise ValueError("The crease line coincides with an edge of a face to fold.")
-
-                new_v1_id, new_v2_id = new_edge
-
-                face1, face2 = self._split_face(fid, new_v1_id, new_v2_id)
-        
-                i = 0
-                while i < len(face1) and (face1[i] == new_v1_id or face1[i] == new_v2_id):
-                    i += 1
-                face_pos = self._get_vertex_position_to_line(face1[i], line)
-
-                if face_pos == pos_to_fold:
-                    folded_face = face1
-                    staying_face = face2
-                else:
-                    folded_face = face2
-                    staying_face = face1   
-                
+        initial_faces_to_fold = self.get_crease_faces(v1_id, v2_id)
+        logging.debug(f" Initial faces to fold: {initial_faces_to_fold}")
+        min_layer = self._get_min_layer_in_faces(initial_faces_to_fold)
+        logging.debug(f" Minimal layer among these faces: {min_layer}")
+        faces_to_fold = self._get_faces_to_fold(faces_split_info, pos_to_fold, min_layer)
+        logging.debug(f" Faces to fold before sorting, above {min_layer} layer and in {pos_to_fold} position: {faces_to_fold}")
+        faces_to_fold = sorted(faces_to_fold, key=lambda fid: faces_split_info[fid]['lid'], reverse=True)
+        logging.debug(f" Faces to fold sorted by layers: {faces_to_fold}")
+        vids_to_reflect = set()
+        logging.debug(f" Starting to fold faces...")
+        for fid in faces_to_fold:
+            logging.debug(f" Folding face {fid} in layer {faces_split_info[fid]['lid']} with split={faces_split_info[fid]['split']} and vertices positions: {faces_split_info[fid]['faces']}")
+            info = faces_split_info[fid]
+            if info['split']:
                 new_fid = max(self.faces.keys()) + 1
-
+                pos_to_stay = (-1) * pos_to_fold
+                staying_face, folding_face = info['faces'][pos_to_stay], info['faces'][pos_to_fold]
+                logging.debug(f"  Face {fid} is split. Staying face: {staying_face}, folding face: {folding_face} into new face ID {new_fid}")
                 self.faces[fid] = staying_face
-                self.faces[new_fid] = folded_face
-                
+                self.faces[new_fid] = folding_face
+                logging.debug(f" Updated faces: {self.faces}")
                 self.faces_orientations[new_fid] = 1 - self.faces_orientations[fid]
-
-                faces_map[fid] = {
-                    'edge': new_edge,
-                    'layer': face_layer_map[fid],
-                    'staying_face': fid,
-                    'folded_face': new_fid,
-                }
-            
+                faces_split_info[fid]['new_fid'] = new_fid
             else:
-                faces_map[fid] = {
-                    'edge': None,
-                    'staying_face': None,
-                    'layer': face_layer_map[fid],
-                    'folded_face': fid
-                }
-                self.faces_orientations[fid] = 1 - self.faces_orientations[fid]
-
-        for vid in vids_to_reflect:
-            self._reflect_vertex(vid, line)        
-        
-        for fid in fids_to_cut:
-
-            info = faces_map[fid]
-            old_layer = info['layer']
-            folded_face = info['folded_face']
-            if self.faces[folded_face] == [7, 4, 9]:
-                new_layer = self._find_layer_for_new_face(old_layer, self.faces[folded_face], debug=True)
+                if info['faces'][pos_to_fold] is not None:
+                    self.faces_orientations[fid] = 1 - self.faces_orientations[fid]
+            for vid in info['vertices'][pos_to_fold]:
+                    vids_to_reflect.add(vid)
+        for fid in faces_to_fold:
+            info = faces_split_info[fid]
+            old_layer = info['lid']
+            if info['split']:
+                new_fid = faces_split_info[fid]['new_fid']
             else:
-                new_layer = self._find_layer_for_new_face(old_layer, self.faces[folded_face])
-            
-            if info['edge'] is None:
+                new_fid = fid
                 self.layers[old_layer].remove(fid)
-
+            new_fid = faces_split_info[fid]['new_fid'] if info['split'] else fid
+            new_layer = self._find_layer_for_new_face(old_layer, self.faces[new_fid])
+            if not info['split']:
+                self.layers[info['lid']].remove(fid)
             if new_layer in self.layers.keys():
-                self.layers[new_layer].append(folded_face)
+                self.layers[new_layer].append(faces_split_info[fid]['new_fid'])
             else:
-                self.layers[new_layer] = [folded_face]
+                self.layers[new_layer] = [faces_split_info[fid]['new_fid']]
+        for vid in vids_to_reflect:
+            self._reflect_vertex(vid, line)
+
+
+        
+        
+
+
+    # def fold_on_crease(self, edge, vertex_to_fold):
+
+    #     self._note_fold(edge, vertex_to_fold)
+
+    #     edge = tuple(sorted(edge))
+
+    #     v1_id, v2_id = edge
+
+    #     self._check_vid_exists(vertex_to_fold)
+    #     self._check_vid_exists(v1_id)
+    #     self._check_vid_exists(v2_id)
+        
+    #     line = self._get_line_equation(v1_id, v2_id)
+        
+    #     pos_to_fold = self._get_vertex_position_to_line(vertex_to_fold, line)
+
+    #     if pos_to_fold == 'on':
+    #         raise ValueError("Vertex to fold lies on the crease line.")
+
+    #     faces_to_fold = self.get_crease_faces(v1_id, v2_id)
+    #     print(faces_to_fold)
+    #     # print("Looking for chained faces...")
+    #     fids_to_cut, vids_to_reflect = self._get_chained_faces(faces_to_fold, line, pos_to_fold)
+
+    #     fids = list(fids_to_cut)
+
+    #     faces_map =self.split_faces_to_fold(line, edge, fids)
+        
+    #     for vid in vids_to_reflect:
+    #         self._reflect_vertex(vid, line)        
+        
+    #     for fid in fids_to_cut:
+
+    #         info = faces_map[fid]
+    #         old_layer = info['layer']
+    #         folded_face = info['folded_face']
+    #         if self.faces[folded_face] == [7, 4, 9]:
+    #             new_layer = self._find_layer_for_new_face(old_layer, self.faces[folded_face], debug=True)
+    #         else:
+    #             new_layer = self._find_layer_for_new_face(old_layer, self.faces[folded_face])
+            
+    #         if info['edge'] is None:
+    #             self.layers[old_layer].remove(fid)
+
+    #         if new_layer in self.layers.keys():
+    #             self.layers[new_layer].append(folded_face)
+    #         else:
+    #             self.layers[new_layer] = [folded_face]
 
     
     def split_face_by_edge_and_ratio(self, edge, ratio_list=0.5):
