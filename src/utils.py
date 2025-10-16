@@ -30,7 +30,7 @@ def sign(x):
     else:
         return 0
     
-def point_position_to_line(point, line):
+def point_side_to_line(point, line):
     A, B, C = line
     d = A * point[0] + B * point[1] + C
     EPSILON = 1e-5
