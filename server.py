@@ -161,7 +161,7 @@ def fold():
     
     # Convert side parameter to vertex parameter for fold_on_crease
     # Find a vertex on the specified side of the line
-    from src.utils import get_line_equasion, point_position_to_line
+    from utils import get_line_equasion, point_position_to_line
     v1_pos = origami.vertices[edge[0]]
     v2_pos = origami.vertices[edge[1]]
     line = get_line_equasion(v1_pos, v2_pos)

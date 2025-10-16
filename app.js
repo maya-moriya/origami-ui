@@ -79,6 +79,49 @@ class OrigamiUI {
         this.offsetY = canvasHeight / 2 + 5 * this.scale; // Flip Y for canvas
     }
     
+    recenterOrigami() {
+        if (!this.origamiData || !this.origamiData.vertices) return;
+        
+        // Find bounding box of all vertices
+        const vertices = Object.values(this.origamiData.vertices);
+        if (vertices.length === 0) return;
+        
+        let minX = vertices[0][0], maxX = vertices[0][0];
+        let minY = vertices[0][1], maxY = vertices[0][1];
+        
+        for (const vertex of vertices) {
+            minX = Math.min(minX, vertex[0]);
+            maxX = Math.max(maxX, vertex[0]);
+            minY = Math.min(minY, vertex[1]);
+            maxY = Math.max(maxY, vertex[1]);
+        }
+        
+        // Calculate center and size of origami
+        const centerX = (minX + maxX) / 2;
+        const centerY = (minY + maxY) / 2;
+        const width = maxX - minX;
+        const height = maxY - minY;
+        const maxDimension = Math.max(width, height);
+        
+        // Calculate new scale to fit origami with some padding
+        const canvasWidth = this.canvas.width;
+        const canvasHeight = this.canvas.height;
+        const minCanvasDimension = Math.min(canvasWidth, canvasHeight);
+        const padding = 0.8; // Use 80% of canvas for origami, 20% for padding
+        const targetSize = minCanvasDimension * padding;
+        
+        if (maxDimension > 0) {
+            this.scale = targetSize / maxDimension;
+        }
+        
+        // Center the origami in the canvas
+        this.offsetX = canvasWidth / 2 - centerX * this.scale;
+        this.offsetY = canvasHeight / 2 + centerY * this.scale; // Flip Y for canvas
+        
+        // Update vertex radius based on new scale
+        this.vertexRadius = Math.max(8, Math.min(16, this.scale * 0.15));
+    }
+    
     
     setupEventListeners() {
         // Canvas events
@@ -140,6 +183,7 @@ class OrigamiUI {
             const response = await fetch('/api/state');
             this.origamiData = await response.json();
             this.updateVertexList();
+            this.recenterOrigami();
             
         } catch (error) {
             console.error('Failed to load state:', error);
@@ -170,9 +214,6 @@ class OrigamiUI {
     
     draw() {
         if (!this.origamiData) return;
-        
-        // Always use static scale (no need for data change detection)
-        this.calculateStaticScale(this.canvas.width, this.canvas.height);
         
         // Clear canvas with white background
         this.ctx.fillStyle = '#ffffff';
@@ -1141,6 +1182,7 @@ class OrigamiUI {
                     console.log(`  Layer ${layerKey}: faces [${facesInLayer}]`);
                 }
                 this.updateVertexList();
+                this.recenterOrigami();
                 this.resetInteractionState();
                 this.updateStatus('Fold completed successfully!');
             } else {
@@ -1197,6 +1239,7 @@ class OrigamiUI {
             
             if (result.success) {
                 this.origamiData = result.state;
+                this.recenterOrigami();
                 this.resetInteractionState();
                 this.updateStatus('Paper flipped successfully!');
             } else {
@@ -1221,6 +1264,7 @@ class OrigamiUI {
             if (result.success) {
                 this.origamiData = result.state;
                 this.updateVertexList();
+                this.recenterOrigami();
                 this.resetInteractionState();
                 this.updateStatus('Operation undone successfully!');
             } else {
@@ -1245,6 +1289,7 @@ class OrigamiUI {
             if (result.success) {
                 this.origamiData = result;
                 this.updateVertexList();
+                this.recenterOrigami();
                 this.resetInteractionState();
                 this.updateStatus('Reset to initial state');
             } else {
