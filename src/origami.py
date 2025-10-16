@@ -482,12 +482,97 @@ class Origami:
         pos_to_fold = self._get_vertex_position_to_line(vertex_to_fold, line)
         self.fold_on_crease_by_side(edge, pos_to_fold)
 
+    def get_two_fold_options(self, edge):
+        line, faces_split_info = self.fold_preparations(edge)
+        v1_id, v2_id = edge
+        initial_faces_to_fold = self.get_crease_faces(v1_id, v2_id)
+        min_layer = self._get_min_layer_in_faces(initial_faces_to_fold)
+        faces_to_fold_positive = self._get_faces_to_fold(faces_split_info, 1, min_layer)
+        faces_to_fold_negative = self._get_faces_to_fold(faces_split_info, -1, min_layer)
+        return line, faces_split_info, faces_to_fold_positive, faces_to_fold_negative
+
+    def _updates_faces_after_fold(self, faces_split_info, faces_to_fold, pos_to_fold):
+        logging.debug(f"Updating faces after splitting... (faces: {self.faces}) pos_to_fold: {pos_to_fold}")
+        faces_to_fold = sorted(faces_to_fold, key=lambda fid: faces_split_info[fid]['lid'], reverse=True)
+        logging.debug(f"Faces to fold sorted by layers: {faces_to_fold}")
+        vids_to_reflect = set()
+        logging.debug(f"Starting to fold faces...")
+        for fid in faces_to_fold:
+            logging.debug(f" Folding face {fid} in layer {faces_split_info[fid]['lid']} with split={faces_split_info[fid]['split']} and vertices positions: {faces_split_info[fid]['faces']}")
+            info = faces_split_info[fid]
+            if info['split']:
+                new_fid = max(self.faces.keys()) + 1
+                pos_to_stay = (-1) * pos_to_fold
+                logging.debug(f" info['faces']: {info['faces']} pos_to_stay: {pos_to_stay}, pos_to_fold: {pos_to_fold}")
+                staying_face, folding_face = info['faces'][pos_to_stay], info['faces'][pos_to_fold]
+                logging.debug(f"  Face {fid} is split. Staying face: {staying_face}, folding face: {folding_face} into new face ID {new_fid}")
+                self.faces[fid] = staying_face
+                self.faces[new_fid] = folding_face
+                logging.debug(f"  Updated faces: {self.faces}")
+                self.faces_orientations[new_fid] = 1 - self.faces_orientations[fid]
+                faces_split_info[fid]['new_fid'] = new_fid
+            else:
+                if info['faces'][pos_to_fold] is not None:
+                    self.faces_orientations[fid] = 1 - self.faces_orientations[fid]
+            for vid in info['vertices'][pos_to_fold]:
+                    vids_to_reflect.add(vid)
+        return faces_split_info, vids_to_reflect
+
+    def _update_layers_after_fold(self, faces_split_info, faces_to_fold):
+        logging.debug(f"Updating layers after splitting... current layers: {[self.layers]} (faces: {self.faces})")
+        new_layer = None
+        for fid in faces_to_fold:
+            info = faces_split_info[fid]
+            old_layer = info['lid']
+            if info['split']:
+                new_fid = faces_split_info[fid]['new_fid']
+            else:
+                new_fid = fid
+                self.layers[old_layer].remove(fid)
+            if new_layer is None:
+                new_layer = self._find_layer_for_new_face(old_layer, self.faces[new_fid])
+            else:
+                new_layer = self._find_layer_for_new_face(new_layer - 1, self.faces[new_fid])
+            if info['split']:
+                logging.debug(f"  Face {fid} {self.faces[fid]} is folded. New face ID {new_fid} will be in layer {new_layer}.")
+            else:
+                logging.debug(f"  Face {fid} {self.faces[fid]} is folded entirely. Old layer {old_layer}, Moving to layer {new_layer}. self.layers: {self.layers}")
+                # self.layers[info['lid']].remove(fid)
+            # if not info['split']:
+                # lid = info['lid']
+                # logging.debug(f"  Face {fid} {self.faces[fid]} is folded entirely. Removing from layer {lid}. self.layers: {self.layers}")
+                # if lid in self.layers.keys() and fid in self.layers[lid]:
+                    # self.layers[info['lid']].remove(fid)
+            if new_layer in self.layers.keys():
+                self.layers[new_layer].append(new_fid)
+            else:
+                self.layers[new_layer] = [new_fid]
+            logging.debug(f" Moved face {new_fid} to layer {new_layer}. self.layers: {self.layers}")
+
+    def _reflect_vertices_after_fold(self, vids_to_reflect, line):
+        logging.debug(f"Vertices to reflect: {vids_to_reflect}")
+        for vid in vids_to_reflect:
+            self._reflect_vertex(vid, line)
+
+    def execute_fold(self, line, faces_split_info, faces_to_fold, pos_to_fold):
+        faces_split_info, vids_to_reflect = self._updates_faces_after_fold(faces_split_info, faces_to_fold, pos_to_fold)
+        self._update_layers_after_fold(faces_split_info, faces_to_fold)
+        self._reflect_vertices_after_fold(vids_to_reflect, line)
+    
+    def fold(self, edge, pos_to_fold):
+        if pos_to_fold not in [1, -1]:
+            raise ValueError("Position to fold must be 1 (left) or -1 (right).")
+        self._note_fold(edge, pos_to_fold)
+        line, faces_split_info, faces_to_fold_positive, faces_to_fold_negative = self.get_two_fold_options(edge)
+        faces_to_fold = faces_to_fold_positive if pos_to_fold == 1 else faces_to_fold_negative
+        self.execute_fold(line, faces_split_info, faces_to_fold, pos_to_fold)
+
     def fold_on_crease_by_side(self, edge, pos_to_fold):
         self._note_fold(edge, pos_to_fold)
         line, faces_split_info = self.fold_preparations(edge)
         v1_id, v2_id = edge
         logging.debug(f"############# Folding along edge {edge} to the {pos_to_fold} side of the line #############")
-        if pos_to_fold == 'on':
+        if pos_to_fold == 0:
             raise ValueError("Vertex to fold lies on the crease line.")
         initial_faces_to_fold = self.get_crease_faces(v1_id, v2_id)
         logging.debug(f"Initial faces to fold: {initial_faces_to_fold}")
