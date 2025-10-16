@@ -125,16 +125,36 @@ def split_edge():
             'error': f'{type(e).__name__}: {str(e)}'
         })
 
-@app.route('/api/fold', methods=['POST'])
-def fold():
-    """Fold along a crease line"""
+@app.route('/api/fold_options', methods=['POST'])
+def fold_options():
+    """Get fold options for a crease"""
     data = request.json
     edge = tuple(data['edge'])
-    vertex_to_fold = int(data['vertex_to_fold'])  # Ensure it's an integer
+    
+    try:
+        line, faces_split_info, faces_to_fold_positive, faces_to_fold_negative = origami.get_two_fold_options(edge)
+        return jsonify({
+            'success': True,
+            'line': line,
+            'faces_positive': list(faces_to_fold_positive),
+            'faces_negative': list(faces_to_fold_negative)
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+@app.route('/api/fold', methods=['POST'])
+def fold():
+    """Fold along a crease line with specified side"""
+    data = request.json
+    edge = tuple(data['edge'])
+    side = int(data['side'])  # 1 or -1
     
     save_state()
     try:
-        origami.fold_on_crease(edge, vertex_to_fold)
+        origami.fold(edge, side)
         return jsonify({
             'success': True,
             'state': get_origami_data()
