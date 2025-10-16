@@ -26,6 +26,13 @@ class OrigamiUI {
         this.mousePos = { x: 0, y: 0 };
         this.previewSide = null; // 1 or -1 for fold preview
         
+        // Angle-based dragging state
+        this.isDraggingAngle = false;
+        this.angleStartVertex = null;
+        this.currentAngle = 0;
+        this.targetEdge = null;
+        this.targetEdgeIntersection = null;
+        
         // Visibility options
         this.showVertexIndexes = true;
         this.showHiddenEdges = true;
@@ -162,6 +169,14 @@ class OrigamiUI {
         this.foldOptions = null;
         this.isDraggingCrease = false;
         this.previewSide = null;
+        
+        // Reset angle-based dragging state
+        this.isDraggingAngle = false;
+        this.angleStartVertex = null;
+        this.currentAngle = 0;
+        this.targetEdge = null;
+        this.targetEdgeIntersection = null;
+        
         document.getElementById('fold-selection').style.display = 'none';
         this.updateStatus('Ready - Drag between vertices to create a crease, or click on edges to split them');
         this.draw();
@@ -746,16 +761,93 @@ class OrigamiUI {
             this.ctx.setLineDash([]);
         }
         
-        // Draw dragging line for crease creation
+        // Draw dragging line for crease creation or angle-based vertex creation
         if (this.isDraggingCrease && this.dragStart) {
-            this.ctx.strokeStyle = '#3b82f6';
-            this.ctx.lineWidth = 2;
-            this.ctx.setLineDash([8, 4]);
-            this.ctx.beginPath();
-            this.ctx.moveTo(this.dragStart.x, this.dragStart.y);
-            this.ctx.lineTo(this.mousePos.x, this.mousePos.y);
-            this.ctx.stroke();
-            this.ctx.setLineDash([]);
+            if (this.isDraggingAngle && this.targetEdgeIntersection) {
+                // Angle-based dragging - show preview vertex and reference line
+                const intersectionCanvas = this.worldToCanvas(
+                    this.targetEdgeIntersection.point.x, 
+                    this.targetEdgeIntersection.point.y
+                );
+                
+                // Draw line from start vertex to potential new vertex (dashed blue)
+                this.ctx.strokeStyle = '#3b82f6'; // Blue for drag line
+                this.ctx.lineWidth = 2;
+                this.ctx.setLineDash([8, 4]);
+                this.ctx.beginPath();
+                this.ctx.moveTo(this.dragStart.x, this.dragStart.y);
+                this.ctx.lineTo(intersectionCanvas.x, intersectionCanvas.y);
+                this.ctx.stroke();
+                this.ctx.setLineDash([]);
+                
+                // Draw semi-transparent preview vertex (like edge splitting - blue)
+                this.ctx.save();
+                this.ctx.globalAlpha = 0.7;
+                this.ctx.beginPath();
+                this.ctx.arc(intersectionCanvas.x, intersectionCanvas.y, this.vertexRadius, 0, 2 * Math.PI);
+                this.ctx.fillStyle = 'rgba(59, 130, 246, 0.4)'; // Light blue like edge hover
+                this.ctx.fill();
+                this.ctx.strokeStyle = '#3b82f6';
+                this.ctx.lineWidth = 2;
+                this.ctx.stroke();
+                
+                // Draw vertex ID for the potential new vertex
+                if (this.showVertexIndexes) {
+                    this.ctx.globalAlpha = 1;
+                    this.ctx.fillStyle = '#374151';
+                    this.ctx.font = '500 11px -apple-system, BlinkMacSystemFont, sans-serif';
+                    this.ctx.textAlign = 'center';
+                    this.ctx.textBaseline = 'middle';
+                    this.ctx.fillText(this.getNextAvailableVertexId().toString(), intersectionCanvas.x, intersectionCanvas.y);
+                }
+                this.ctx.restore();
+                
+                // Draw reference edge from start vertex to target edge vertex
+                let referenceVertex = null;
+                
+                // Find reference vertex (connected to both start vertex and target edge)
+                for (const edge of this.origamiData.all_edges) {
+                    if ((edge[0] === this.dragStartVertex && (edge[1] === this.targetEdge[0] || edge[1] === this.targetEdge[1])) ||
+                        (edge[1] === this.dragStartVertex && (edge[0] === this.targetEdge[0] || edge[0] === this.targetEdge[1]))) {
+                        referenceVertex = edge[0] === this.dragStartVertex ? edge[1] : edge[0];
+                        break;
+                    }
+                }
+                
+                // Fallback to first connected edge if no direct connection
+                if (referenceVertex === null) {
+                    const connectedEdges = this.origamiData.all_edges.filter(edge => 
+                        edge[0] === this.dragStartVertex || edge[1] === this.dragStartVertex
+                    );
+                    if (connectedEdges.length > 0) {
+                        const refEdge = connectedEdges[0];
+                        referenceVertex = refEdge[0] === this.dragStartVertex ? refEdge[1] : refEdge[0];
+                    }
+                }
+                
+                if (referenceVertex !== null) {
+                    const refVertexPos = this.worldToCanvas(...this.origamiData.vertices[referenceVertex]);
+                    
+                    // Highlight reference edge (light red, solid)
+                    this.ctx.strokeStyle = '#f87171'; // Light red for reference
+                    this.ctx.lineWidth = 3;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(this.dragStart.x, this.dragStart.y);
+                    this.ctx.lineTo(refVertexPos.x, refVertexPos.y);
+                    this.ctx.stroke();
+                }
+                
+            } else {
+                // Regular vertex-to-vertex dragging or no edge target
+                this.ctx.strokeStyle = '#3b82f6';
+                this.ctx.lineWidth = 2;
+                this.ctx.setLineDash([8, 4]);
+                this.ctx.beginPath();
+                this.ctx.moveTo(this.dragStart.x, this.dragStart.y);
+                this.ctx.lineTo(this.mousePos.x, this.mousePos.y);
+                this.ctx.stroke();
+                this.ctx.setLineDash([]);
+            }
         }
     }
     
@@ -898,6 +990,86 @@ class OrigamiUI {
         return { distance, ratio };
     }
     
+    calculateAngle(startPos, endPos) {
+        const dx = endPos.x - startPos.x;
+        const dy = endPos.y - startPos.y;
+        let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+        // Normalize angle to 0-360 degrees
+        if (angle < 0) angle += 360;
+        return angle;
+    }
+    
+    calculateAngleToReferenceEdge(startVertex, newVertexPos, targetEdge) {
+        // Find an edge connected to the start vertex that also connects to one of the target edge vertices
+        let referenceVertex = null;
+        
+        // Check if start vertex is connected to either vertex of the target edge
+        for (const edge of this.origamiData.all_edges) {
+            if ((edge[0] === startVertex && (edge[1] === targetEdge[0] || edge[1] === targetEdge[1])) ||
+                (edge[1] === startVertex && (edge[0] === targetEdge[0] || edge[0] === targetEdge[1]))) {
+                // Found a direct connection
+                referenceVertex = edge[0] === startVertex ? edge[1] : edge[0];
+                break;
+            }
+        }
+        
+        // If no direct connection, use the first connected edge as fallback
+        if (referenceVertex === null) {
+            for (const edge of this.origamiData.all_edges) {
+                if (edge[0] === startVertex || edge[1] === startVertex) {
+                    referenceVertex = edge[0] === startVertex ? edge[1] : edge[0];
+                    break;
+                }
+            }
+        }
+        
+        if (referenceVertex === null) return 0;
+        
+        const referenceVertexPos = this.origamiData.vertices[referenceVertex];
+        const startVertexPos = this.origamiData.vertices[startVertex];
+        
+        // Calculate vectors
+        const refVector = {
+            x: referenceVertexPos[0] - startVertexPos[0],
+            y: referenceVertexPos[1] - startVertexPos[1]
+        };
+        
+        const newVector = {
+            x: newVertexPos.x - startVertexPos[0],
+            y: newVertexPos.y - startVertexPos[1]
+        };
+        
+        // Calculate angle between vectors using dot product and cross product
+        const dot = refVector.x * newVector.x + refVector.y * newVector.y;
+        const cross = refVector.x * newVector.y - refVector.y * newVector.x;
+        
+        let angle = Math.atan2(cross, dot) * 180 / Math.PI;
+        
+        // Normalize to 0-360 degrees
+        if (angle < 0) angle += 360;
+        
+        return angle;
+    }
+    
+    
+    getVertexLayer(vertexId) {
+        // Find the highest layer that contains a face with this vertex
+        let highestLayer = 0;
+        
+        for (const [faceId, face] of Object.entries(this.origamiData.faces)) {
+            if (face.includes(vertexId)) {
+                for (const [layerNum, facesInLayer] of Object.entries(this.origamiData.layers)) {
+                    if (facesInLayer.includes(parseInt(faceId))) {
+                        highestLayer = Math.max(highestLayer, parseInt(layerNum));
+                        break;
+                    }
+                }
+            }
+        }
+        
+        return highestLayer;
+    }
+    
     handleClick(e) {
         if (this.isDraggingCrease) return;
         
@@ -942,12 +1114,13 @@ class OrigamiUI {
             const vertex = this.findVertexAt(pos);
             
             if (vertex) {
-                // Start dragging to create a crease
+                // Start dragging - we'll determine the mode in handleMouseMove
                 this.isDraggingCrease = true;
                 this.dragStart = this.worldToCanvas(...this.origamiData.vertices[vertex]);
                 this.dragStartVertex = vertex;
+                this.angleStartVertex = vertex;
                 this.canvas.style.cursor = 'grabbing';
-                this.updateStatus('Drag to another vertex to create a crease line');
+                this.updateStatus('Drag to another vertex for crease, or drag at angle to create new vertex');
             }
         }
     }
@@ -956,8 +1129,53 @@ class OrigamiUI {
         this.mousePos = this.getMousePos(e);
         
         if (this.isDraggingCrease) {
-            // Update drag end vertex only if vertices are visible
-            this.dragEndVertex = this.showVertexIndexes ? this.findVertexAt(this.mousePos) : null;
+            // Check if dragging to an existing vertex (crease mode)
+            const targetVertex = this.showVertexIndexes ? this.findVertexAt(this.mousePos) : null;
+            
+            if (targetVertex && targetVertex !== this.dragStartVertex) {
+                // Vertex-to-vertex dragging (crease mode)
+                this.isDraggingAngle = false;
+                this.dragEndVertex = targetVertex;
+                this.targetEdge = null;
+                this.targetEdgeIntersection = null;
+                this.updateStatus(`Creating crease between vertices ${this.dragStartVertex} and ${targetVertex}`);
+            } else {
+                // Check if mouse is over an edge (angle mode)
+                const edgeResult = this.findEdgeAt(this.mousePos);
+                
+                if (edgeResult) {
+                    this.isDraggingAngle = true;
+                    this.dragEndVertex = null;
+                    this.targetEdge = edgeResult.edge;
+                    this.hoveredEdgeRatio = edgeResult.ratio;
+                    
+                    // Calculate the potential new vertex position
+                    const v1 = this.origamiData.vertices[edgeResult.edge[0]];
+                    const v2 = this.origamiData.vertices[edgeResult.edge[1]];
+                    const newVertexPos = {
+                        x: v1[0] + (v2[0] - v1[0]) * edgeResult.ratio,
+                        y: v1[1] + (v2[1] - v1[1]) * edgeResult.ratio
+                    };
+                    
+                    this.targetEdgeIntersection = {
+                        point: newVertexPos,
+                        ratio: edgeResult.ratio
+                    };
+                    
+                    // Calculate angle to reference edge connected to start vertex
+                    const angle = this.calculateAngleToReferenceEdge(this.dragStartVertex, newVertexPos, edgeResult.edge);
+                    
+                    this.updateStatus(`Angle: ${angle.toFixed(1)}° - Release to create vertex on edge [${edgeResult.edge[0]}-${edgeResult.edge[1]}]`);
+                } else {
+                    // No edge under mouse - just show drag line
+                    this.isDraggingAngle = false;
+                    this.dragEndVertex = null;
+                    this.targetEdge = null;
+                    this.targetEdgeIntersection = null;
+                    this.updateStatus('Drag to another vertex for crease, or hover over edge to create vertex');
+                }
+            }
+            
             this.draw();
         } else {
             // Update hover states and fold preview
@@ -984,24 +1202,28 @@ class OrigamiUI {
     
     handleMouseUp(e) {
         if (this.isDraggingCrease) {
-            const pos = this.getMousePos(e);
-            // Only find vertex if vertices are visible
-            const endVertex = this.showVertexIndexes ? this.findVertexAt(pos) : null;
-            
-            if (endVertex && endVertex !== this.dragStartVertex) {
-                // Valid crease selection
-                this.selectedCrease = [this.dragStartVertex, endVertex].sort((a, b) => a - b);
+            if (this.isDraggingAngle && this.targetEdge && this.targetEdgeIntersection) {
+                // Angle-based vertex creation
+                this.createVertexOnEdge(this.targetEdge, this.targetEdgeIntersection.ratio);
+            } else if (this.dragEndVertex && this.dragEndVertex !== this.dragStartVertex) {
+                // Valid crease selection (vertex-to-vertex)
+                this.selectedCrease = [this.dragStartVertex, this.dragEndVertex].sort((a, b) => a - b);
                 this.loadFoldOptions();
                 
                 document.getElementById('selected-edge').textContent = `${this.selectedCrease[0]} - ${this.selectedCrease[1]}`;
                 document.getElementById('fold-selection').style.display = 'block';
                 this.updateStatus('Move mouse over faces to preview fold, then click to fold');
             } else {
-                this.updateStatus('Drag between two different vertices to define crease line');
+                this.updateStatus('Drag to another vertex for crease, or drag at angle to create new vertex');
             }
             
+            // Reset drag state
             this.dragStartVertex = null;
             this.dragEndVertex = null;
+            this.isDraggingAngle = false;
+            this.angleStartVertex = null;
+            this.targetEdge = null;
+            this.targetEdgeIntersection = null;
         }
         
         this.isDraggingCrease = false;
@@ -1193,6 +1415,7 @@ class OrigamiUI {
             if (result.success) {
                 this.origamiData = result.state;
                 this.updateVertexList();
+                this.recenterOrigami();
                 this.resetInteractionState();
                 this.updateStatus(`Vertex added successfully! New vertex: ${result.new_vertex}`);
             } else {
@@ -1201,6 +1424,16 @@ class OrigamiUI {
         } catch (error) {
             console.error('Split error:', error);
             this.updateStatus('Network error during split operation');
+        }
+    }
+    
+    async createVertexOnEdge(edge, ratio) {
+        try {
+            this.updateStatus('Creating vertex on edge...');
+            await this.splitEdge(edge, ratio);
+        } catch (error) {
+            console.error('Create vertex error:', error);
+            this.updateStatus('Error creating vertex on edge');
         }
     }
     
