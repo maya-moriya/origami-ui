@@ -4,16 +4,21 @@ from matplotlib.patches import Polygon
 import math
 from src.utils import *
 import logging
+import sys
 
 logging.basicConfig(
-    level=logging.DEBUG, # Set the minimum level to display messages
-    format='%(levelname)s | %(funcName)s | %(message)s'
+    format='%(levelname)s | %(funcName)s | %(message)s',
+    stream=sys.stdout 
 )
 
-DEBUG_MODE = False
+DEBUG_MODE = True 
 
-if not DEBUG_MODE:
-    logging.basicConfig(level=logging.WARNING)
+root_logger = logging.getLogger()
+
+if DEBUG_MODE:
+    root_logger.setLevel(logging.DEBUG)
+else:
+    root_logger.setLevel(logging.WARNING)
 
 class Origami:
     def __init__(self, size=10.0):
@@ -257,7 +262,7 @@ class Origami:
         
         return tuple(sorted(vertices))
 
-    def get_crease_faces(self, v1_id, v2_id):
+    def get_crease_faces(self, v1_id, v2_id, vertex_to_fold=None):
         faces_with_both = []
         faces_with_one = []
         for fid, face in self.faces.items():
@@ -267,6 +272,10 @@ class Origami:
                 faces_with_one.append(fid)
         if len(faces_with_both) > 0:
             logging.debug(f"Found crease faces with both vertices: {[self.faces[fid] for fid in faces_with_both]}")
+            if vertex_to_fold is not None:
+                faces_with_all = [fid for fid in faces_with_both if vertex_to_fold in self.faces[fid]]
+                if len(faces_with_all) > 0:
+                    return faces_with_all
             return faces_with_both
         if len(faces_with_one) > 0:
             logging.debug(f"Found crease faces with one vertex: {[self.faces[fid] for fid in faces_with_one]}")
@@ -337,7 +346,7 @@ class Origami:
         return line, faces_split_info
 
     def _get_faces_to_fold(self, faces_split_info, pos_to_fold, min_layer):
-        logging.info(f" Getting faces to fold on the {pos_to_fold} side above layer {min_layer}")
+        logging.debug(f" Getting faces to fold on the {pos_to_fold} side above layer {min_layer}")
         #return {fid for fid, info in faces_split_info.items() if (info['lid'] >= min_layer and info['faces'][pos_to_fold] is not None)}
         faces_to_fold = set()
         for fid, info in faces_split_info.items():
@@ -360,7 +369,7 @@ class Origami:
     def fold_on_crease(self, edge, vertex_to_fold):
         line = self._get_line_equation(*edge)
         pos_to_fold = self._get_vertex_position_to_line(vertex_to_fold, line)
-        self.fold_on_crease_by_side(edge, pos_to_fold)
+        self.fold_on_crease_by_side(edge, pos_to_fold, vertex_to_fold)
 
     def get_two_fold_options(self, edge):
         line, faces_split_info = self.fold_preparations(edge)
@@ -371,14 +380,14 @@ class Origami:
         faces_to_fold_negative = self._get_faces_to_fold(faces_split_info, -1, min_layer)
         return line, faces_split_info, faces_to_fold_positive, faces_to_fold_negative
 
-    def fold_on_crease_by_side(self, edge, pos_to_fold):
+    def fold_on_crease_by_side(self, edge, pos_to_fold, vertex_to_fold=None):
         self._note_fold(edge, pos_to_fold)
         line, faces_split_info = self.fold_preparations(edge)
         v1_id, v2_id = edge
         logging.debug(f"############# Folding along edge {edge} to the {pos_to_fold} side of the line #############")
         if pos_to_fold == 0:
             raise ValueError("Vertex to fold lies on the crease line.")
-        initial_faces_to_fold = self.get_crease_faces(v1_id, v2_id)
+        initial_faces_to_fold = self.get_crease_faces(v1_id, v2_id, vertex_to_fold)
         logging.debug(f"Initial faces to fold: {initial_faces_to_fold}")
         min_layer = self._get_min_layer_in_faces(initial_faces_to_fold)
         logging.debug(f"Minimal layer among these faces: {min_layer}")
