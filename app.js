@@ -107,7 +107,7 @@ class OrigamiUI {
         const canvasWidth = this.canvas.width;
         const canvasHeight = this.canvas.height;
         const minCanvasDimension = Math.min(canvasWidth, canvasHeight);
-        const padding = 0.8; // Use 80% of canvas for origami, 20% for padding
+        const padding = 0.5; // Use 50% of canvas for origami, 50% for padding
         const targetSize = minCanvasDimension * padding;
         
         if (maxDimension > 0) {
@@ -546,34 +546,23 @@ class OrigamiUI {
         // Determine fill color based on state
         const fillColor = this.getVertexFillColor(vertexId);
         
-        // Draw vertex circle
+        // Draw vertex circle with dark gray 50% transparent fill
         this.ctx.beginPath();
         this.ctx.arc(pos.x, pos.y, this.vertexRadius, 0, 2 * Math.PI);
         this.ctx.fillStyle = fillColor;
         this.ctx.fill();
         
-        // Enhanced stroke for different states
-        if (this.hoveredVertex === vertexId) {
-            this.ctx.strokeStyle = '#ef4444'; // Red stroke for hovered vertex
-            this.ctx.lineWidth = 2.5;
-        } else if (this.isDraggingCrease && this.dragEndVertex === vertexId) {
-            this.ctx.strokeStyle = '#ef4444'; // Red stroke for drag target
-            this.ctx.lineWidth = 2.5;
-        } else if (this.selectedCrease && this.selectedCrease.includes(vertexId)) {
-            this.ctx.strokeStyle = '#ef4444'; // Red stroke for selected crease vertices
-            this.ctx.lineWidth = 2.5;
-        } else {
-            this.ctx.strokeStyle = '#374151'; // Normal stroke
-            this.ctx.lineWidth = 1.5;
-        }
-        this.ctx.stroke();
+        // No border/stroke
         
-        // Draw vertex label
-        this.ctx.fillStyle = '#374151';
+        // Draw vertex label with transparent composite operation to create "hole" effect
+        this.ctx.save();
+        this.ctx.globalCompositeOperation = 'destination-out';
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 1)'; // Fully opaque for cutting out
         this.ctx.font = '500 12px -apple-system, BlinkMacSystemFont, sans-serif';
         this.ctx.textAlign = 'center';
         this.ctx.textBaseline = 'middle';
         this.ctx.fillText(vid, pos.x, pos.y);
+        this.ctx.restore();
     }
     
     drawGroupedVertices(vids, worldPos) {
@@ -615,34 +604,23 @@ class OrigamiUI {
             // Determine fill color based on state
             const fillColor = this.getVertexFillColor(vertexId);
             
-            // Draw vertex circle with enhanced visibility
+            // Draw vertex circle with dark gray 50% transparent fill
             this.ctx.beginPath();
             this.ctx.arc(circleX, circleY, radius, 0, 2 * Math.PI);
             this.ctx.fillStyle = fillColor;
             this.ctx.fill();
             
-            // Enhanced stroke for different states
-            if (this.hoveredVertex === vertexId) {
-                this.ctx.strokeStyle = '#ef4444'; // Red stroke for hovered vertex
-                this.ctx.lineWidth = 2.5;
-            } else if (this.isDraggingCrease && this.dragEndVertex === vertexId) {
-                this.ctx.strokeStyle = '#ef4444'; // Red stroke for drag target
-                this.ctx.lineWidth = 2.5;
-            } else if (this.selectedCrease && this.selectedCrease.includes(vertexId)) {
-                this.ctx.strokeStyle = '#ef4444'; // Red stroke for selected crease vertices
-                this.ctx.lineWidth = 2.5;
-            } else {
-                this.ctx.strokeStyle = '#374151'; // Normal stroke
-                this.ctx.lineWidth = 1.5;
-            }
-            this.ctx.stroke();
+            // No border/stroke
             
-            // Draw vertex label with better contrast
-            this.ctx.fillStyle = '#1f2937';
+            // Draw vertex label with transparent composite operation to create "hole" effect
+            this.ctx.save();
+            this.ctx.globalCompositeOperation = 'destination-out';
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 1)'; // Fully opaque for cutting out
             this.ctx.font = '600 10px -apple-system, BlinkMacSystemFont, sans-serif';
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
             this.ctx.fillText(vid, circleX, circleY);
+            this.ctx.restore();
         }
         
         // Add small indicator showing this is a grouped vertex set
@@ -656,30 +634,30 @@ class OrigamiUI {
     }
     
     getVertexFillColor(vertexId) {
-        let fillColor = '#ffffff';
+        let fillColor = 'rgba(64, 64, 64, 0.5)'; // Default dark gray 50% transparent
         
         // Hover states take HIGHEST priority
         if (this.hoveredVertex === vertexId) {
-            fillColor = 'rgba(239, 68, 68, 0.4)'; // Light red for hovered vertex
+            fillColor = 'rgba(239, 68, 68, 0.7)'; // Semi-transparent red for hovered vertex
         }
         // Hovered edge vertices (show which edge will be split)
         else if (this.hoveredEdge && (this.hoveredEdge.includes(vertexId))) {
-            fillColor = 'rgba(239, 68, 68, 0.2)'; // Light red for hovered edge vertices
+            fillColor = 'rgba(239, 68, 68, 0.5)'; // Semi-transparent red for hovered edge vertices
         }
         // Drag states for crease creation
         else if (this.dragStartVertex === vertexId && this.isDraggingCrease) {
-            fillColor = 'rgba(239, 68, 68, 0.6)'; // Darker red for drag start
+            fillColor = 'rgba(239, 68, 68, 0.8)'; // More opaque red for drag start
         }
         else if (this.dragEndVertex === vertexId && this.isDraggingCrease) {
-            fillColor = 'rgba(239, 68, 68, 0.6)'; // Darker red for drag end
+            fillColor = 'rgba(239, 68, 68, 0.8)'; // More opaque red for drag end
         }
         // Selected crease vertices
         else if (this.selectedCrease && (this.selectedCrease.includes(vertexId))) {
-            fillColor = '#ef4444'; // Solid red for selected crease vertices
+            fillColor = 'rgba(239, 68, 68, 0.9)'; // Almost solid red for selected crease vertices
         }
-        // Default white
+        // Default dark gray 50% transparent
         else {
-            fillColor = '#ffffff';
+            fillColor = 'rgba(64, 64, 64, 0.5)';
         }
         
         return fillColor;
