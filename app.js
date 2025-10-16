@@ -20,10 +20,11 @@ class OrigamiUI {
         this.hoveredEdgeRatio = 0.5;
         this.dragStartVertex = null;
         this.dragEndVertex = null;
-        this.foldingState = null; // null, 'line-selected', 'awaiting-vertex'
-        this.flashingVertices = false;
+        this.selectedCrease = null; // The selected crease edge [v1, v2]
+        this.foldOptions = null; // Fold options from server
+        this.isDraggingCrease = false;
         this.mousePos = { x: 0, y: 0 };
-        this.hoveredDragTarget = null;
+        this.previewSide = null; // 1 or -1 for fold preview
         
         // Special ratios to highlight
         this.specialRatios = [
@@ -95,16 +96,17 @@ class OrigamiUI {
     }
     
     resetInteractionState() {
-        this.selectedEdge = null;
         this.hoveredVertex = null;
         this.hoveredEdge = null;
         this.isDragging = false;
         this.dragStartVertex = null;
         this.dragEndVertex = null;
-        this.foldingState = null;
-        this.flashingVertices = false;
+        this.selectedCrease = null;
+        this.foldOptions = null;
+        this.isDraggingCrease = false;
+        this.previewSide = null;
         document.getElementById('fold-selection').style.display = 'none';
-        this.updateStatus('Ready - Click on edges to add vertices, or drag between vertices to fold');
+        this.updateStatus('Ready - Drag between vertices to create a crease, or click on edges to split them');
         this.draw();
     }
     
@@ -218,11 +220,24 @@ class OrigamiUI {
         }
         this.ctx.closePath();
         
-        // Set fill color based on orientation - match source code exactly
-        // Reset any transparency
+        // Set fill color based on orientation and preview state
         this.ctx.globalAlpha = 1.0;
-        // Use matplotlib's 'white' and 'lightblue' colors - orientation 0 = white, 1 = lightblue
-        this.ctx.fillStyle = orientation === 0 ? 'white' : 'lightblue';
+        
+        // Check if this face should be highlighted for fold preview
+        let fillColor;
+        if (this.previewSide && this.foldOptions) {
+            const facesToHighlight = this.previewSide === 1 ? this.foldOptions.faces_positive : this.foldOptions.faces_negative;
+            if (facesToHighlight.includes(parseInt(faceId))) {
+                fillColor = 'rgba(239, 68, 68, 0.3)'; // Light red for fold preview
+            } else {
+                fillColor = orientation === 0 ? 'white' : 'lightblue';
+            }
+        } else {
+            // Normal colors - orientation 0 = white, 1 = lightblue
+            fillColor = orientation === 0 ? 'white' : 'lightblue';
+        }
+        
+        this.ctx.fillStyle = fillColor;
         this.ctx.fill();
         
         // Draw face border with modern styling
@@ -319,9 +334,15 @@ class OrigamiUI {
         this.ctx.fillStyle = fillColor;
         this.ctx.fill();
         
-        // Enhanced stroke for hovered vertices
+        // Enhanced stroke for different states
         if (this.hoveredVertex === vertexId) {
             this.ctx.strokeStyle = '#ef4444'; // Red stroke for hovered vertex
+            this.ctx.lineWidth = 2.5;
+        } else if (this.isDraggingCrease && this.dragEndVertex === vertexId) {
+            this.ctx.strokeStyle = '#ef4444'; // Red stroke for drag target
+            this.ctx.lineWidth = 2.5;
+        } else if (this.selectedCrease && this.selectedCrease.includes(vertexId)) {
+            this.ctx.strokeStyle = '#ef4444'; // Red stroke for selected crease vertices
             this.ctx.lineWidth = 2.5;
         } else {
             this.ctx.strokeStyle = '#374151'; // Normal stroke
@@ -380,9 +401,15 @@ class OrigamiUI {
             this.ctx.fillStyle = fillColor;
             this.ctx.fill();
             
-            // Enhanced stroke - stronger for hovered vertices
+            // Enhanced stroke for different states
             if (this.hoveredVertex === vertexId) {
                 this.ctx.strokeStyle = '#ef4444'; // Red stroke for hovered vertex
+                this.ctx.lineWidth = 2.5;
+            } else if (this.isDraggingCrease && this.dragEndVertex === vertexId) {
+                this.ctx.strokeStyle = '#ef4444'; // Red stroke for drag target
+                this.ctx.lineWidth = 2.5;
+            } else if (this.selectedCrease && this.selectedCrease.includes(vertexId)) {
+                this.ctx.strokeStyle = '#ef4444'; // Red stroke for selected crease vertices
                 this.ctx.lineWidth = 2.5;
             } else {
                 this.ctx.strokeStyle = '#374151'; // Normal stroke
@@ -411,34 +438,24 @@ class OrigamiUI {
     getVertexFillColor(vertexId) {
         let fillColor = '#ffffff';
         
-        // Hover states take HIGHEST priority (always show hover feedback)
+        // Hover states take HIGHEST priority
         if (this.hoveredVertex === vertexId) {
-            // Stronger hover indication during flashing state
-            if (this.foldingState === 'awaiting-vertex' && this.flashingVertices) {
-                fillColor = 'rgba(239, 68, 68, 0.7)'; // Stronger red during flashing for clarity
-            } else {
-                fillColor = 'rgba(239, 68, 68, 0.4)'; // Normal red for other states
-            }
+            fillColor = 'rgba(239, 68, 68, 0.4)'; // Light red for hovered vertex
         }
         // Hovered edge vertices (show which edge will be split)
         else if (this.hoveredEdge && (this.hoveredEdge.includes(vertexId))) {
             fillColor = 'rgba(239, 68, 68, 0.2)'; // Light red for hovered edge vertices
         }
-        // Drag states
-        else if ((this.dragStartVertex === vertexId) || (this.dragEndVertex === vertexId)) {
-            fillColor = '#ef4444'; // Red fill for selected drag vertices
-        } else if (this.hoveredDragTarget === vertexId) {
-            fillColor = 'rgba(239, 68, 68, 0.3)'; // Transparent red for drag target
+        // Drag states for crease creation
+        else if (this.dragStartVertex === vertexId && this.isDraggingCrease) {
+            fillColor = 'rgba(239, 68, 68, 0.6)'; // Darker red for drag start
         }
-        // Flashing state (only if not being hovered)
-        else if (this.foldingState === 'awaiting-vertex' && this.flashingVertices) {
-            if (this.selectedEdge && (vertexId === this.selectedEdge[0] || vertexId === this.selectedEdge[1])) {
-                fillColor = '#ffffff'; // Keep selected fold line vertices white
-            } else {
-                // Flashing yellow and white - but hover overrides this
-                const time = Date.now();
-                fillColor = Math.sin(time / 200) > 0 ? '#fef08a' : '#ffffff';
-            }
+        else if (this.dragEndVertex === vertexId && this.isDraggingCrease) {
+            fillColor = 'rgba(239, 68, 68, 0.6)'; // Darker red for drag end
+        }
+        // Selected crease vertices
+        else if (this.selectedCrease && (this.selectedCrease.includes(vertexId))) {
+            fillColor = '#ef4444'; // Solid red for selected crease vertices
         }
         // Default white
         else {
@@ -511,10 +528,10 @@ class OrigamiUI {
             this.ctx.restore();
         }
         
-        // Draw fold line
-        if (this.selectedEdge) {
-            const v1 = this.origamiData.vertices[this.selectedEdge[0]];
-            const v2 = this.origamiData.vertices[this.selectedEdge[1]];
+        // Draw selected crease line
+        if (this.selectedCrease) {
+            const v1 = this.origamiData.vertices[this.selectedCrease[0]];
+            const v2 = this.origamiData.vertices[this.selectedCrease[1]];
             
             const p1 = this.worldToCanvas(v1[0], v1[1]);
             const p2 = this.worldToCanvas(v2[0], v2[1]);
@@ -529,8 +546,8 @@ class OrigamiUI {
             this.ctx.setLineDash([]);
         }
         
-        // Draw dragging line
-        if (this.isDragging && this.dragStart) {
+        // Draw dragging line for crease creation
+        if (this.isDraggingCrease && this.dragStart) {
             this.ctx.strokeStyle = '#3b82f6';
             this.ctx.lineWidth = 2;
             this.ctx.setLineDash([8, 4]);
@@ -682,13 +699,17 @@ class OrigamiUI {
     }
     
     handleClick(e) {
-        if (this.isDragging) return;
+        if (this.isDraggingCrease) return;
         
         const pos = this.getMousePos(e);
         
-        if (this.foldingState === 'awaiting-vertex') {
-            this.handleFoldVertexClick(pos);
+        if (this.selectedCrease && this.foldOptions) {
+            // We have a selected crease, perform fold based on mouse position
+            if (this.previewSide) {
+                this.performFold(this.selectedCrease, this.previewSide);
+            }
         } else if (this.hoveredEdge) {
+            // Click on edge to split it
             this.handleEdgeClick(pos);
         }
     }
@@ -713,48 +734,38 @@ class OrigamiUI {
         }
     }
     
-    handleFoldVertexClick(pos) {
-        const vertex = this.findVertexAt(pos);
-        
-        if (this.selectedEdge && vertex) {
-            // Check if vertex is not on the selected edge
-            if (vertex !== this.selectedEdge[0] && vertex !== this.selectedEdge[1]) {
-                this.foldOnCrease(this.selectedEdge, vertex);
-            } else {
-                this.updateStatus('Select a vertex not on the fold line');
-            }
-        } else {
-            if (!vertex) {
-                this.updateStatus('Click on a vertex to fold');
-            }
-        }
-    }
-    
     handleMouseDown(e) {
         const pos = this.getMousePos(e);
         const vertex = this.findVertexAt(pos);
         
-        if (vertex && this.foldingState !== 'awaiting-vertex') {
-            this.isDragging = true;
+        if (vertex) {
+            // Start dragging to create a crease
+            this.isDraggingCrease = true;
             this.dragStart = this.worldToCanvas(...this.origamiData.vertices[vertex]);
             this.dragStartVertex = vertex;
             this.canvas.style.cursor = 'grabbing';
+            this.updateStatus('Drag to another vertex to create a crease line');
         }
     }
     
     handleMouseMove(e) {
         this.mousePos = this.getMousePos(e);
         
-        if (this.isDragging) {
+        if (this.isDraggingCrease) {
+            // Update drag end vertex
+            this.dragEndVertex = this.findVertexAt(this.mousePos);
             this.draw();
         } else {
-            // Update hover states
+            // Update hover states and fold preview
             this.updateHoverStates();
             
+            if (this.selectedCrease && this.foldOptions) {
+                this.updateFoldPreview();
+            }
+            
             // Update cursor based on what's under the mouse
-            if (this.foldingState === 'awaiting-vertex') {
-                const vertex = this.findVertexAt(this.mousePos);
-                this.canvas.style.cursor = vertex ? 'pointer' : 'crosshair';
+            if (this.selectedCrease && this.previewSide) {
+                this.canvas.style.cursor = 'pointer';
             } else if (this.hoveredEdge) {
                 this.canvas.style.cursor = 'pointer';
             } else if (this.hoveredVertex) {
@@ -768,30 +779,27 @@ class OrigamiUI {
     }
     
     handleMouseUp(e) {
-        if (this.isDragging) {
+        if (this.isDraggingCrease) {
             const pos = this.getMousePos(e);
             const endVertex = this.findVertexAt(pos);
             
             if (endVertex && endVertex !== this.dragStartVertex) {
-                // Valid edge selection for folding
-                this.selectedEdge = [this.dragStartVertex, endVertex].sort((a, b) => a - b);
-                this.dragEndVertex = endVertex;
-                this.foldingState = 'awaiting-vertex';
-                this.flashingVertices = true;
+                // Valid crease selection
+                this.selectedCrease = [this.dragStartVertex, endVertex].sort((a, b) => a - b);
+                this.loadFoldOptions();
                 
-                document.getElementById('selected-edge').textContent = `${this.selectedEdge[0]} - ${this.selectedEdge[1]}`;
+                document.getElementById('selected-edge').textContent = `${this.selectedCrease[0]} - ${this.selectedCrease[1]}`;
                 document.getElementById('fold-selection').style.display = 'block';
-                this.updateStatus('Click on a vertex to choose which side to fold');
-                
-                // Start flashing animation
-                this.startFlashingAnimation();
+                this.updateStatus('Move mouse over faces to preview fold, then click to fold');
             } else {
-                this.updateStatus('Drag between two different vertices to define fold line');
-                this.dragStartVertex = null;
+                this.updateStatus('Drag between two different vertices to define crease line');
             }
+            
+            this.dragStartVertex = null;
+            this.dragEndVertex = null;
         }
         
-        this.isDragging = false;
+        this.isDraggingCrease = false;
         this.dragStart = null;
         this.canvas.style.cursor = 'crosshair';
         this.draw();
@@ -805,26 +813,12 @@ class OrigamiUI {
         this.hoveredVertex = null;
         this.hoveredEdge = null;
         this.hoveredEdgeRatio = 0.5;
-        this.hoveredDragTarget = null;
         
         // Always check for vertex hover
         this.hoveredVertex = this.findVertexAt(this.mousePos);
         
-        if (this.foldingState === 'awaiting-vertex') {
-            // Only look for vertices when awaiting vertex selection - no edges
-            return;
-        }
-        
-        // If dragging, we still want to show hover on potential drag targets
-        if (this.isDragging) {
-            const dragTarget = this.findVertexAt(this.mousePos);
-            if (dragTarget && dragTarget !== this.dragStartVertex) {
-                this.hoveredDragTarget = dragTarget;
-            }
-        } 
-        
-        // Check for edges only if not hovering a vertex
-        if (!this.hoveredVertex && !this.isDragging) {
+        // Check for edges only if not hovering a vertex and not in fold mode
+        if (!this.hoveredVertex && !this.isDraggingCrease && !this.selectedCrease) {
             const edgeResult = this.findEdgeAt(this.mousePos);
             if (edgeResult) {
                 this.hoveredEdge = edgeResult.edge;
@@ -833,14 +827,113 @@ class OrigamiUI {
         }
     }
     
-    startFlashingAnimation() {
-        const flashInterval = setInterval(() => {
-            if (this.foldingState !== 'awaiting-vertex') {
-                clearInterval(flashInterval);
-                return;
+    async loadFoldOptions() {
+        try {
+            const response = await fetch('/api/fold_options', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    edge: this.selectedCrease
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                this.foldOptions = result;
+            } else {
+                this.updateStatus(`Error loading fold options: ${result.error}`);
             }
-            this.draw();
-        }, 100);
+        } catch (error) {
+            console.error('Fold options error:', error);
+            this.updateStatus('Network error loading fold options');
+        }
+    }
+    
+    updateFoldPreview() {
+        if (!this.foldOptions || !this.selectedCrease) {
+            this.previewSide = null;
+            return;
+        }
+        
+        // Determine which side of the crease line the mouse is on
+        const worldPos = this.canvasToWorld(this.mousePos.x, this.mousePos.y);
+        const [A, B, C] = this.foldOptions.line;
+        
+        // Calculate which side of the line the mouse is on
+        const d = A * worldPos.x + B * worldPos.y + C;
+        const side = d > 1e-5 ? 1 : (d < -1e-5 ? -1 : 0);
+        
+        // Check if mouse is inside any face to set preview
+        if (side !== 0 && this.isPointInAnyFace(worldPos)) {
+            this.previewSide = side;
+        } else {
+            this.previewSide = null;
+        }
+    }
+    
+    isPointInAnyFace(worldPos) {
+        for (const [faceId, face] of Object.entries(this.origamiData.faces)) {
+            if (this.isPointInFace(worldPos, face)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    isPointInFace(point, face) {
+        // Simple point-in-polygon test using ray casting
+        const vertices = face.map(vid => this.origamiData.vertices[vid]);
+        let inside = false;
+        
+        for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
+            const xi = vertices[i][0], yi = vertices[i][1];
+            const xj = vertices[j][0], yj = vertices[j][1];
+            
+            if (((yi > point.y) !== (yj > point.y)) &&
+                (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi)) {
+                inside = !inside;
+            }
+        }
+        return inside;
+    }
+    
+    async performFold(edge, side) {
+        try {
+            this.updateStatus('Folding...');
+            this.canvas.style.cursor = 'wait';
+            this.canvas.style.pointerEvents = 'none';
+            
+            const response = await fetch('/api/fold', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    edge: edge,
+                    side: side
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                this.origamiData = result.state;
+                this.updateVertexList();
+                this.resetInteractionState();
+                this.updateStatus('Fold completed successfully!');
+            } else {
+                this.updateStatus(`Error: ${result.error}`);
+            }
+        } catch (error) {
+            console.error('Fold error:', error);
+            this.updateStatus('Network error during fold operation');
+        } finally {
+            this.canvas.style.pointerEvents = 'auto';
+            this.canvas.style.cursor = 'crosshair';
+        }
     }
     
     async splitEdge(edge, ratio) {
@@ -872,45 +965,6 @@ class OrigamiUI {
         }
     }
     
-    async foldOnCrease(edge, vertexToFold) {
-        try {
-            // Show immediate visual feedback
-            this.updateStatus('Folding...');
-            this.canvas.style.cursor = 'wait';
-            
-            // Disable further interactions
-            this.canvas.style.pointerEvents = 'none';
-            
-            const response = await fetch('/api/fold', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    edge: edge,
-                    vertex_to_fold: vertexToFold
-                })
-            });
-            
-            const result = await response.json();
-            
-            if (result.success) {
-                this.origamiData = result.state;
-                this.updateVertexList();
-                this.resetInteractionState();
-                this.updateStatus('Fold completed successfully!');
-            } else {
-                this.updateStatus(`Error: ${result.error}`);
-            }
-        } catch (error) {
-            console.error('Fold error:', error);
-            this.updateStatus('Network error during fold operation');
-        } finally {
-            // Re-enable interactions
-            this.canvas.style.pointerEvents = 'auto';
-            this.canvas.style.cursor = 'crosshair';
-        }
-    }
     
     async flip() {
         try {
