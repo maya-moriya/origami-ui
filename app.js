@@ -889,8 +889,8 @@ class OrigamiUI {
             if (this.previewSide) {
                 this.performFold(this.selectedCrease, this.previewSide);
             }
-        } else if (this.hoveredEdge) {
-            // Click on edge to split it
+        } else if (this.hoveredEdge && this.showVertexIndexes) {
+            // Only allow edge splitting (vertex addition) when vertices are visible
             this.handleEdgeClick(pos);
         }
     }
@@ -937,8 +937,8 @@ class OrigamiUI {
         this.mousePos = this.getMousePos(e);
         
         if (this.isDraggingCrease) {
-            // Update drag end vertex
-            this.dragEndVertex = this.findVertexAt(this.mousePos);
+            // Update drag end vertex only if vertices are visible
+            this.dragEndVertex = this.showVertexIndexes ? this.findVertexAt(this.mousePos) : null;
             this.draw();
         } else {
             // Update hover states and fold preview
@@ -966,7 +966,8 @@ class OrigamiUI {
     handleMouseUp(e) {
         if (this.isDraggingCrease) {
             const pos = this.getMousePos(e);
-            const endVertex = this.findVertexAt(pos);
+            // Only find vertex if vertices are visible
+            const endVertex = this.showVertexIndexes ? this.findVertexAt(pos) : null;
             
             if (endVertex && endVertex !== this.dragStartVertex) {
                 // Valid crease selection
@@ -1004,8 +1005,8 @@ class OrigamiUI {
             this.hoveredVertex = this.findVertexAt(this.mousePos);
         }
         
-        // Check for edges only if not hovering a vertex and not in fold mode
-        if (!this.hoveredVertex && !this.isDraggingCrease && !this.selectedCrease) {
+        // Check for edges only if not hovering a vertex and not in fold mode and vertices are visible
+        if (!this.hoveredVertex && !this.isDraggingCrease && !this.selectedCrease && this.showVertexIndexes) {
             const edgeResult = this.findEdgeAt(this.mousePos);
             if (edgeResult) {
                 this.hoveredEdge = edgeResult.edge;
