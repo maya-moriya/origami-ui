@@ -1,28 +1,47 @@
+"""Origami paper folding simulation module.
+
+This module provides functionality to simulate paper folding operations
+including creasing, splitting, and complex fold operations.
+"""
+
+import logging
+import math
+import sys
+from typing import Dict, List, Set, Tuple, Optional, Union
+
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.patches import Polygon
-import math
-from src.utils import *
-import logging
-import sys
 
+from src.utils import *
+from src.origami_base import OrigamiBase
+from src.origami_visualizer import OrigamiVisualizer
+
+# Configuration constants
+DEBUG_MODE = True
+
+# Logging configuration
 logging.basicConfig(
     format='%(levelname)s | %(funcName)s | %(message)s',
     stream=sys.stdout 
 )
 
-DEBUG_MODE = True 
-
 root_logger = logging.getLogger()
+root_logger.setLevel(logging.DEBUG if DEBUG_MODE else logging.WARNING)
 
-if DEBUG_MODE:
-    root_logger.setLevel(logging.DEBUG)
-else:
-    root_logger.setLevel(logging.WARNING)
-
-class Origami:
-    def __init__(self, size=10.0):
-        """Initializes a square paper."""
+class Origami(OrigamiBase):
+    """Main origami class for paper folding simulation.
+    
+    Provides functionality for creating, folding, and manipulating
+    virtual origami paper with support for complex folding operations.
+    """
+    
+    def __init__(self, size: float = 10.0):
+        """Initialize a square paper.
+        
+        Args:
+            size: Side length of the square paper.
+        """
+        super().__init__()
         self.size = size
         self.initial_setup = {
             1: np.array([0.0, size]),
@@ -42,8 +61,11 @@ class Origami:
         }
         self.edges_splits = []
         self.actions = []
+        self.visualizer = OrigamiVisualizer(self)
 
-    def flip(self):
+    # ===== BASIC OPERATIONS =====
+    def flip(self) -> None:
+        """Flip the entire origami paper over."""
         max_layer = max(self.layers.keys())
         new_layers = {}
         for lid, faces in self.layers.items():
@@ -55,69 +77,43 @@ class Origami:
         for vid in self.vertices.keys():
             self.vertices[vid][0] = self.size - self.vertices[vid][0]
 
-    def _check_vid_exists(self, v_id):
-        if v_id not in self.vertices:
-            raise ValueError("Vertex ID does not exist.")
+    # Note: _check_vid_exists, _check_fid_exists, and vid_in_face are now in base class
 
-    def _check_fid_exists(self, fid):
-        if fid not in self.faces:
-            raise ValueError("Face ID does not exist.")
     
-    def vid_in_face(self, fid, v_id):
-        return v_id in self.faces[fid]
-
-    def _note_split(self, edge, ratio):
+    # Note: Edge and face utility methods are now in OrigamiBase
+    
+    # ===== ACTION TRACKING METHODS =====
+    def _note_split(self, edge: Tuple[int, int], ratio: float) -> None:
+        """Record a split action for history tracking."""
         self.actions.append({"action": "split", "edge": edge, "ratio": ratio})
 
-    def _note_fold(self, edge, side):
+    def _note_fold(self, edge: Tuple[int, int], side: int) -> None:
+        """Record a fold action for history tracking."""
         self.actions.append({"action": "fold", "edge": edge, "side": side})
     
-    def _edges_of_face(self, fid):
-        if fid not in self.faces:
-            raise ValueError("Face ID does not exist.")
-        face = self.faces[fid]
-        edges = set()
-        for i in range(len(face)):
-            v1_id = face[i]
-            v2_id = face[(i + 1) % len(face)]
-            edge = tuple(sorted((v1_id, v2_id)))
-            edges.add(edge)
-        return edges
-    
-    def _edge_in_face(self, fid, edge):
-        edge = tuple(sorted(edge))
-        edges_of_face = self._edges_of_face(fid)
-        return edge in edges_of_face
-
-    def _faces_for_vertices(self, vertices_list):
-        faces_list = set()
-        for vid in vertices_list:
-            for fid, face in self.faces.items():
-                if vid in face:
-                    faces_list.add(fid)
-        return list(faces_list)
-    
-    def _face_vertex_map(self):
-        face_vertex_map = {}
-        for fid, face in self.faces.items():
-            for vid in face:
-                if vid in face_vertex_map:
-                    face_vertex_map[vid].add(fid)
-                else:
-                    face_vertex_map[vid] = {fid}
-        return face_vertex_map
-    
-    def _face_layer_map(self):
-        face_layer_map = {}
-        for lid, layer in self.layers.items():
-            for fid in layer:
-                face_layer_map[fid] = lid
-        return face_layer_map
-    
-    def _get_vertex_position_to_line(self, v_id, line):
+    # ===== GEOMETRIC OPERATIONS =====
+    def _get_vertex_position_to_line(self, v_id: int, line) -> int:
+        """Get the position of a vertex relative to a line."""
         self._check_vid_exists(v_id)
         return point_position_to_line(self.vertices[v_id], line)
-        
+    
+    def _get_line_equation(self, v1_id: int, v2_id: int):
+        """Get line equation from two vertices."""
+        p1, p2 = self.vertices[v1_id], self.vertices[v2_id]
+        return get_line_equasion(p1, p2)
+
+    def _reflect_vertex(self, v_id: int, line_eq) -> None:
+        """Reflect a vertex across a line."""
+        self._check_vid_exists(v_id)
+        self.vertices[v_id] = reflect_point(self.vertices[v_id], line_eq)
+
+    def _get_edge_line_intersection(self, line, edge):
+        """Get intersection ratio of line with edge."""
+        v1_id, v2_id = edge
+        p1, p2 = self.vertices[v1_id], self.vertices[v2_id]
+        return segment_line_intersection(line, (p1, p2))
+    
+    # ===== FACE FINDING AND MANIPULATION =====
     def _find_face_containing_one_side_of_the_edge_and_vertex(self, edge, vertex):
         edge = tuple(sorted(edge))
         v1_id, v2_id = edge
@@ -156,19 +152,21 @@ class Origami:
 
         return face_1, face_2
 
-    def _face_overlap_with_layer(self, layer, new_face):
-        for fid in layer:
-            if self.faces[fid] == new_face:
-                return True
-            face1 = [tuple(self.vertices[vid]) for vid in self.faces[fid]]
-            face2 = [tuple(self.vertices[vid]) for vid in new_face]
-            if do_faces_overlap(face1, face2):
-                return True
-        return False
+    # Note: Layer operations moved to organized section above
     
-    def _find_layer_for_new_face(self, old_lid, new_face, debug=False):
+    # ===== LAYER OPERATIONS =====
+    def _add_face_to_layer(self, fid: int, lid: int) -> None:
+        """Add a face to a specific layer."""
+        self._check_fid_exists(fid)
+        if lid in self.layers.keys():
+            self.layers[lid].append(fid)
+        else:
+            self.layers[lid] = [fid]
+    
+    def _find_layer_for_new_face(self, old_lid: int, new_face: List[int], debug: bool = False) -> int:
+        """Find an appropriate layer for a new face to avoid overlaps."""
         logging.debug(f"Finding layer for new face {new_face} from old layer {old_lid}")
-        lid = old_lid + 1
+        lid = old_lid
         while True:
             if lid not in self.layers.keys():
                 logging.debug(f"Layer {lid} is not in layers, returning it.")
@@ -180,14 +178,27 @@ class Origami:
                 logging.debug(f"Layer {lid} does not overlap with new face {new_face}, returning it.")
                 return lid
     
-    def _add_face_to_layer(self, fid, lid):
-        self._check_fid_exists(fid)
-        if lid in self.layers.keys():
-            self.layers[lid].append(fid)
-        else:
-            self.layers[lid] = [fid]
+    def _face_overlap_with_layer(self, layer: List[int], new_face: List[int]) -> bool:
+        """Check if a new face overlaps with any face in a layer."""
+        for fid in layer:
+            if self.faces[fid] == new_face:
+                return True
+            # Check if faces share exactly 2 vertices (an edge)
+            shared_vids = set(self.faces[fid]) & set(new_face)
+            if len(shared_vids) == 2:
+                # Faces share an edge - they can be in the same layer if they only touch at the edge
+                # Skip overlap check for edge-adjacent faces
+                continue
+            face1 = [tuple(self.vertices[vid]) for vid in self.faces[fid]]
+            face2 = [tuple(self.vertices[vid]) for vid in new_face]
+            if do_faces_overlap(face1, face2):
+                logging.debug(f"Face {fid} {self.faces[fid]} overlaps with new face {new_face}")
+                return True
+        return False
     
-    def _vertices_positions_list(self, vertices, line):
+    # ===== VERTEX OPERATIONS =====
+    def _vertices_positions_list(self, vertices: List[int], line) -> Dict[int, Set[int]]:
+        """Get position mapping of vertices relative to a line."""
         position_map = {1: set(), -1: set(), 0: set()}
         for vid in vertices:
             position = self._get_vertex_position_to_line(vid, line)
@@ -200,29 +211,16 @@ class Origami:
         return self._vertices_positions_list(face, line)
 
 
-    def _get_min_layer_in_faces(self, faces):
+    def _get_min_layer_in_faces(self, faces: List[int]) -> int:
+        """Get the minimum layer number among given faces."""
         face_layer_map = self._face_layer_map()
-        min_layer = min([face_layer_map[fid] for fid in faces])
-        return min_layer
+        return min([face_layer_map[fid] for fid in faces])
     
-    def _sort_faces_by_layers(self, faces, reverse=True):
+    def _sort_faces_by_layers(self, faces: List[int], reverse: bool = True) -> List[int]:
+        """Sort faces by their layer order."""
         fids = list(faces)
         face_layer_map = self._face_layer_map()
-        faces_sorted_by_layers = sorted(fids, key=lambda fid: face_layer_map[fid], reverse=reverse)
-        return faces_sorted_by_layers
-    
-    def _get_line_equation(self, v1_id, v2_id):
-        p1, p2 = self.vertices[v1_id], self.vertices[v2_id]
-        return get_line_equasion(p1, p2)
-
-    def _reflect_vertex(self, v_id, line_eq):
-        self._check_vid_exists(v_id)
-        self.vertices[v_id] = reflect_point(self.vertices[v_id], line_eq)     
-
-    def _get_edge_line_intersection(self, line, edge):
-        v1_id, v2_id = edge
-        p1, p2 = self.vertices[v1_id], self.vertices[v2_id]
-        return segment_line_intersection(line, (p1, p2))
+        return sorted(fids, key=lambda fid: face_layer_map[fid], reverse=reverse)
 
     def _cut_face_along_line(self, line, fid):        
         self._check_fid_exists(fid)
@@ -262,7 +260,9 @@ class Origami:
         
         return tuple(sorted(vertices))
 
-    def get_crease_faces(self, v1_id, v2_id, vertex_to_fold=None):
+    # ===== FOLDING OPERATIONS =====
+    def get_crease_faces(self, v1_id: int, v2_id: int, vertex_to_fold: Optional[int] = None) -> List[int]:
+        """Get faces that contain the crease edge or are affected by it."""
         faces_with_both = []
         faces_with_one = []
         for fid, face in self.faces.items():
@@ -271,15 +271,22 @@ class Origami:
             elif v1_id in face or v2_id in face:
                 faces_with_one.append(fid)
         if len(faces_with_both) > 0:
-            logging.debug(f"Found crease faces with both vertices: {[self.faces[fid] for fid in faces_with_both]}")
             if vertex_to_fold is not None:
                 faces_with_all = [fid for fid in faces_with_both if vertex_to_fold in self.faces[fid]]
                 if len(faces_with_all) > 0:
+                    logging.debug(f"Found faces with both crease vertices and the folding vertex: {[self.faces[fid] for fid in faces_with_all]}")
                     return faces_with_all
+            logging.debug(f"Found faces with both crease vertices: {[self.faces[fid] for fid in faces_with_both]}")
             return faces_with_both
         if len(faces_with_one) > 0:
-            logging.debug(f"Found crease faces with one vertex: {[self.faces[fid] for fid in faces_with_one]}")
+            if vertex_to_fold is not None:
+                faces_with_all = [fid for fid in faces_with_one if vertex_to_fold in self.faces[fid]]
+                if len(faces_with_all) > 0:
+                    logging.debug(f"Found faces with one crease vertex and the folding vertex: {[self.faces[fid] for fid in faces_with_all]}")
+                    return faces_with_all
+            logging.debug(f"Found faces with one crease vertex: {[self.faces[fid] for fid in faces_with_one]}")
             return faces_with_one
+        
         raise ValueError("No faces found containing either vertex of the edge.")
     
     def _vids_position_map(self, line):
@@ -298,51 +305,91 @@ class Origami:
             logging.debug(f" Added new vertex to position map. Vertices position map: {existing_map}")
         return existing_map
 
-    def fold_preparations(self, edge):
+    def _prepare_face_split_info(self, fid: int, line, vids_position_map: Dict[int, int]) -> Dict:
+        """Prepare split information for a single face."""
+        face = self.faces[fid]
+        fids_layer_map = self._face_layer_map()
+        
+        face_info = {
+            "crease": None,
+            "split": False,
+            "lid": fids_layer_map[fid],
+            "vertices": {1: set(), 0: set(), -1: set()},
+            "faces": {1: None, -1: None}
+        }
+        
+        # Assign vertices to position groups
+        for vid in face:
+            position = vids_position_map[vid]
+            face_info["vertices"][position].add(vid)
+        
+        return face_info
+    
+    def _determine_face_crease(self, fid: int, face_info: Dict, line, v1_id: int, v2_id: int) -> None:
+        """Determine the crease for a face."""
+        face = self.faces[fid]
+        if v1_id in face and v2_id in face:
+            face_info['crease'] = tuple(sorted((v1_id, v2_id)))
+        else:
+            face_info['crease'] = self._cut_face_along_line(line, fid)
+    
+    def _handle_face_splitting(self, fid: int, face_info: Dict) -> None:
+        """Handle splitting of faces that cross the fold line."""
+        if len(face_info["vertices"][1]) > 0 and len(face_info["vertices"][-1]) > 0:
+            face_info['split'] = True
+            crease_vid1, crease_vid2 = face_info['crease']
+            face1, face2 = self._split_face(fid, crease_vid1, crease_vid2)
+            
+            if list(face_info["vertices"][1])[0] in face1:
+                face_info["faces"][1] = face1
+                face_info["faces"][-1] = face2
+            else:
+                face_info["faces"][1] = face2
+                face_info["faces"][-1] = face1
+            
+            logging.debug(f"    Face {fid} will be split into two faces: {face1} and {face2}")
+        
+        elif len(face_info["vertices"][1]) > 0:
+            face_info["faces"][1] = self.faces[fid]
+            logging.debug(f"    All vertices of face {fid} are on the positive side of the line.")
+        
+        elif len(face_info["vertices"][-1]) > 0:
+            face_info["faces"][-1] = self.faces[fid]
+            logging.debug(f"    All vertices of face {fid} are on the negative side of the line.")
+        else:
+            raise ValueError("Face has no vertices on either side of the line.")
+
+    def fold_preparations(self, edge: Tuple[int, int]) -> Tuple:
+        """Prepare all necessary information for folding along an edge.
+        
+        Args:
+            edge: Tuple of vertex IDs forming the fold line
+            
+        Returns:
+            Tuple of (line equation, faces split information)
+        """
         logging.debug(f" Preparing to fold along edge {edge}")
         v1_id, v2_id = edge
         line = self._get_line_equation(v1_id, v2_id)
         vids_position_map = self._vids_position_map(line)
-        fids_layer_map = self._face_layer_map()
         faces_split_info = {}
+        
         for fid, face in self.faces.items():
+            # Update position map if new vertices were added
             if len(self.vertices) > len(vids_position_map):
                 vids_position_map = self.update_vertices_position_map(line, vids_position_map)
+            
             logging.debug(f" Preparing face {fid}: {face}")
-            faces_split_info[fid] = {"crease": None,
-                                    "split": False,
-                                    "lid": fids_layer_map[fid],
-                                    "vertices": {1: set(), 0: set(), -1: set()},
-                                    "faces": {1: None, -1: None}}
-            for vid in face:
-                position = vids_position_map[vid]
-                faces_split_info[fid]["vertices"][position].add(vid)
-            if v1_id in face and v2_id in face:
-                faces_split_info[fid]['crease'] = tuple(sorted((v1_id, v2_id)))
-            else:
-                faces_split_info[fid]['crease'] = self._cut_face_along_line(line, fid)
-
-            if len(faces_split_info[fid]["vertices"][1]) > 0 and len(faces_split_info[fid]["vertices"][-1]) > 0:
-                faces_split_info[fid]['split'] = True
-                crease_vid1, crease_vid2 = faces_split_info[fid]['crease']
-                face1, face2 = self._split_face(fid, crease_vid1, crease_vid2)
-                if list(faces_split_info[fid]["vertices"][1])[0] in face1:
-                    faces_split_info[fid]["faces"][1] = face1
-                    faces_split_info[fid]["faces"][-1] = face2
-                else:
-                    faces_split_info[fid]["faces"][1] = face2
-                    faces_split_info[fid]["faces"][-1] = face1
-                logging.debug(f"    Face {fid} will be split into two faces: {face1} and {face2}")
-
-            elif len(faces_split_info[fid]["vertices"][1]) > 0:
-                faces_split_info[fid]["faces"][1] = face
-                logging.debug(f"    All vertices of face {fid} are on the positive side of the line.")
-
-            elif len(faces_split_info[fid]["vertices"][-1]) > 0:
-                faces_split_info[fid]["faces"][-1] = face
-                logging.debug(f"    All vertices of face {fid} are on the negative side of the line.")
-            else:
-                raise ValueError("Face has no vertices on either side of the line.")
+            
+            # Prepare basic face information
+            faces_split_info[fid] = self._prepare_face_split_info(fid, line, vids_position_map)
+            
+            # Determine the crease for this face
+            self._determine_face_crease(fid, faces_split_info[fid], line, v1_id, v2_id)
+            
+            # Handle face splitting logic
+            self._handle_face_splitting(fid, faces_split_info[fid])
+        
         return line, faces_split_info
 
     def _get_faces_to_fold(self, faces_split_info, pos_to_fold, min_layer):
@@ -380,21 +427,7 @@ class Origami:
         faces_to_fold_negative = self._get_faces_to_fold(faces_split_info, -1, min_layer)
         return line, faces_split_info, faces_to_fold_positive, faces_to_fold_negative
 
-    def fold_on_crease_by_side(self, edge, pos_to_fold, vertex_to_fold=None):
-        self._note_fold(edge, pos_to_fold)
-        line, faces_split_info = self.fold_preparations(edge)
-        v1_id, v2_id = edge
-        logging.debug(f"############# Folding along edge {edge} to the {pos_to_fold} side of the line #############")
-        if pos_to_fold == 0:
-            raise ValueError("Vertex to fold lies on the crease line.")
-        initial_faces_to_fold = self.get_crease_faces(v1_id, v2_id, vertex_to_fold)
-        logging.debug(f"Initial faces to fold: {initial_faces_to_fold}")
-        min_layer = self._get_min_layer_in_faces(initial_faces_to_fold)
-        logging.debug(f"Minimal layer among these faces: {min_layer}")
-        faces_to_fold = self._get_faces_to_fold(faces_split_info, pos_to_fold, min_layer)
-        logging.debug(f"Faces to fold before sorting, above layer {min_layer} and in {pos_to_fold} position: {faces_to_fold}")
-        faces_to_fold = sorted(faces_to_fold, key=lambda fid: faces_split_info[fid]['lid'], reverse=True)
-        logging.debug(f"Faces to fold sorted by layers: {faces_to_fold}")
+    def _update_faces_after_split(self, faces_to_fold, pos_to_fold, faces_split_info):
         vids_to_reflect = set()
         logging.debug(f"Starting to fold faces...")
         for fid in faces_to_fold:
@@ -415,7 +448,25 @@ class Origami:
                     self.faces_orientations[fid] = 1 - self.faces_orientations[fid]
             for vid in info['vertices'][pos_to_fold]:
                     vids_to_reflect.add(vid)
-        logging.debug(f"Updating layers after splitting... current layers: {[self.layers]} (faces: {self.faces})")
+        return vids_to_reflect, faces_split_info
+
+    def _arrange_faces_to_fold(self, edge, faces_split_info, pos_to_fold, vertex_to_fold):
+
+        v1_id, v2_id = edge
+        initial_faces_to_fold = self.get_crease_faces(v1_id, v2_id, vertex_to_fold)
+
+        logging.debug(f"Initial faces to fold: {initial_faces_to_fold}")
+        min_layer = self._get_min_layer_in_faces(initial_faces_to_fold)
+
+        logging.debug(f"Minimal layer among these faces: {min_layer}")
+        faces_to_fold = self._get_faces_to_fold(faces_split_info, pos_to_fold, min_layer)
+
+        logging.debug(f"Faces to fold before sorting, above layer {min_layer} and in {pos_to_fold} position: {faces_to_fold}")
+        faces_to_fold = sorted(faces_to_fold, key=lambda fid: faces_split_info[fid]['lid'], reverse=True)
+
+        return faces_to_fold, min_layer
+    
+    def _update_layers_after_split(self, faces_to_fold, min_layer, faces_split_info):
         new_layer = None
         for fid in faces_to_fold:
             info = faces_split_info[fid]
@@ -426,9 +477,12 @@ class Origami:
                 new_fid = fid
                 self.layers[old_layer].remove(fid)
             if new_layer is None:
-                new_layer = self._find_layer_for_new_face(old_layer, self.faces[new_fid])
+                # For split faces, start from min_layer
+                # For faces that are folded entirely, always start from layer 1 to find overlaps correctly
+                search_start = min_layer if info['split'] else 1
+                new_layer = self._find_layer_for_new_face(search_start, self.faces[new_fid])
             else:
-                new_layer = self._find_layer_for_new_face(new_layer - 1, self.faces[new_fid])
+                new_layer = self._find_layer_for_new_face(new_layer, self.faces[new_fid])
             if info['split']:
                 logging.debug(f"  Face {fid} {self.faces[fid]} is folded. New face ID {new_fid} will be in layer {new_layer}.")
             else:
@@ -439,13 +493,41 @@ class Origami:
             else:
                 self.layers[new_layer] = [new_fid]
             logging.debug(f" Moved face {new_fid} to layer {new_layer}. self.layers: {self.layers}")
+
+
+    def fold_on_crease_by_side(self, edge, pos_to_fold, vertex_to_fold=None):
+        if pos_to_fold not in [1, -1]:
+            raise ValueError("pos_to_fold must be 1 (positive side) or -1 (negative side).")
+        
+        self._note_fold(edge, pos_to_fold)
+        line, faces_split_info = self.fold_preparations(edge)
+        
+        logging.debug(f"############# Folding along edge {edge} to the {pos_to_fold} side of the line #############")
+        
+        faces_to_fold, min_layer = self._arrange_faces_to_fold(edge, faces_split_info, pos_to_fold, vertex_to_fold)
+
+        logging.debug(f"Faces to fold sorted by layers: {faces_to_fold}")
+        vids_to_reflect, faces_split_info = self._update_faces_after_split(faces_to_fold, pos_to_fold, faces_split_info)
+
+        logging.debug(f"Updating layers after splitting... current layers: {[self.layers]} (faces: {self.faces})")
+        self._update_layers_after_split(faces_to_fold, min_layer, faces_split_info)
+
         logging.debug(f"Vertices to reflect: {vids_to_reflect}")
         for vid in vids_to_reflect:
             self._reflect_vertex(vid, line)
 
     
-    def split_face_by_edge_and_ratio(self, edge, ratio_list=0.5):
+    # ===== EDGE SPLITTING OPERATIONS =====
+    def split_face_by_edge_and_ratio(self, edge: Tuple[int, int], ratio_list: Union[float, List[float]] = 0.5) -> Union[int, List[int]]:
+        """Split an edge at given ratio(s) and update affected faces.
         
+        Args:
+            edge: Tuple of vertex IDs forming the edge
+            ratio_list: Single ratio or list of ratios to split at
+            
+        Returns:
+            New vertex ID(s) created at split point(s)
+        """
         self._note_split(edge, ratio_list)
 
         single_cut = not isinstance(ratio_list, list)
@@ -490,12 +572,7 @@ class Origami:
         
         return new_ids
     
-    def _get_all_edges(self):
-        edges = set()
-        for fid in self.faces.keys():
-            face_edges = self._edges_of_face(fid)
-            edges.update(face_edges)
-        return edges
+    # Note: _get_all_edges is now in OrigamiBase
     
     def _find_face_with_3_vids(self, vid1, vid2, vid3):
         for fid, face in self.faces.items():
@@ -526,16 +603,45 @@ class Origami:
         else:
             return face1
         
-    def _remove_vid(self, v_id):
+    def _remove_vid(self, v_id: int) -> int:
+        """Remove a vertex by replacing it with the highest-ID vertex.
+        
+        Args:
+            v_id: Vertex ID to remove
+            
+        Returns:
+            The ID of the vertex that was moved to replace the removed one
+        """
+        if v_id not in self.vertices:
+            raise ValueError(f"Cannot remove vertex {v_id}: does not exist")
+        
         max_vid = max(self.vertices.keys())
+        if v_id == max_vid:
+            # If we're removing the highest ID vertex, just delete it
+            del self.vertices[v_id]
+            return v_id
+        
+        # Replace the vertex to remove with the highest ID vertex
         self.vertices[v_id] = self.vertices[max_vid]
         del self.vertices[max_vid]
+        
+        # Update all face references
         for fid, face in self.faces.items():
             if max_vid in face:
                 face[face.index(max_vid)] = v_id
+        
         return max_vid
 
-    def pocket(self, pivot_vid, shifted_vid, upper_vid, lower_vid):
+    # ===== POCKET OPERATIONS =====
+    def pocket(self, pivot_vid: int, shifted_vid: int, upper_vid: int, lower_vid: int) -> None:
+        """Create a pocket fold using four vertices.
+        
+        Args:
+            pivot_vid: Vertex ID of the pivot point
+            shifted_vid: Vertex ID that will be shifted/removed
+            upper_vid: Vertex ID of the upper boundary
+            lower_vid: Vertex ID of the lower boundary
+        """
         self._check_vid_exists(pivot_vid)
         self._check_vid_exists(shifted_vid)
         self._check_vid_exists(upper_vid)
@@ -571,86 +677,13 @@ class Origami:
         self._add_face_to_layer(extended_face, forth_layer)
         
 
-    def plot_layers(self):
-        cols = 3
-        rows = math.ceil(len(self.layers) / cols)
-        fig, axes = plt.subplots(rows, cols, figsize=(2 * cols, 2 * rows))
-        axes = axes.flatten()
-        for i, layer in enumerate(reversed(self.layers.values())):
-            for fid in layer:
-                face = self.faces[fid]
-                coords = [self.vertices[vid] for vid in face]
-                x_coords = [p[0] for p in coords]
-                y_coords = [p[1] for p in coords]
-                orientation = self.faces_orientations.get(fid, 0)
-                color = 'white' if orientation == 0 else 'lightblue'
-                axes[i].fill(x_coords, y_coords, color=color, alpha=0.5, edgecolor='none', zorder=5)
-                len_face = len(face)
-                for j in range(len_face):
-                    p1, p2 = self.vertices[face[j]], self.vertices[face[(j + 1) % len_face]]
-                    axes[i].plot([p1[0], p2[0]], [p1[1], p2[1]], 'k-', linewidth=1.5, zorder=5)
-            axes[i].set_xlim(-2, 12)
-            axes[i].set_ylim(-2, 12)
-        plt.show()
+    # ===== VISUALIZATION METHODS =====
+    def plot_layers(self) -> None:
+        """Plot each layer of the origami separately."""
+        self.visualizer.plot_layers()
 
 
-    def plot(self, show_vertices_indices=True, show_all_edges=True, print_layers=False):
-        """Plots the current state of the origami paper with filled faces."""
-        fig, ax = plt.subplots(figsize=(4, 4))
-        
-        if show_all_edges:
-            all_edges = self._get_all_edges()
-            for edge in all_edges:
-                p1, p2 = self.vertices[edge[0]], self.vertices[edge[1]]
-                ax.plot([p1[0], p2[0]], [p1[1], p2[1]], 'k-', linewidth=0.3, zorder=7)
-
-        def vertices_by_pos():
-            pos_dict = {}
-            for vid, pos in self.vertices.items():
-                found_point_in_dict = False
-                for point in pos_dict.keys():
-                    if np.allclose(point, pos, atol=1e-5):
-                        pos_dict[point].append(vid)
-                        found_point_in_dict = True
-                        break
-                if not found_point_in_dict:
-                    pos_dict[tuple(pos)] = [vid]
-            return pos_dict
-        
-        if show_vertices_indices:
-            pos_dict = vertices_by_pos()
-            for pos, vids in pos_dict.items():
-                for i, vid in enumerate(vids):
-                    ax.text(pos[0], pos[1] - (i * 0.5) - 0.2, str(vid), ha='center', fontsize=9, va='bottom',
-                            bbox=dict(boxstyle="circle,pad=0.05", fc="white", alpha=1, ec="black", lw=0.5), zorder=10)
-        
-        faces_to_plot = self._sort_faces_by_layers(self.faces.keys(), reverse=False)
-        for face_id in faces_to_plot:
-            face = self.faces[face_id]
-
-            len_face = len(face)
-
-            coords = [self.vertices[vid] for vid in face]
-            orientation = self.faces_orientations.get(face_id, 0)
-            color = 'white' if orientation == 0 else 'lightblue'
-            x_coords = [p[0] for p in coords]
-            y_coords = [p[1] for p in coords]
-
-            ax.fill(x_coords, y_coords, color=color, alpha=1, edgecolor='none', zorder=5)
-
-            for i in range(len_face):
-                p1, p2 = self.vertices[face[i]], self.vertices[face[(i + 1) % len_face]]
-                ax.plot([p1[0], p2[0]], [p1[1], p2[1]], 'k-', linewidth=1.5, zorder=5)
-            
-
-        ax.set_xlim(-2, 12)
-        ax.set_ylim(-2, 12)
-
-        if print_layers:
-            print(".... Faces by Layers ...")
-            for layer in sorted(self.layers.keys()):
-                print(f"    Layer {layer}")
-                for fid in self.layers[layer]:
-                    print(f"        Face {fid}: {self.faces[fid]} Orientation: {self.faces_orientations[fid]}")
-
-        plt.show()        
+    def plot(self, show_vertices_indices: bool = True, show_all_edges: bool = True, 
+             print_layers: bool = False) -> None:
+        """Plot the current state of the origami paper with filled faces."""
+        self.visualizer.plot(show_vertices_indices, show_all_edges, print_layers)

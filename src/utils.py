@@ -65,9 +65,10 @@ def reflect_point(point, line_eq):
     t = -2 * (A * p_x + B * p_y + C) / denominator
     return np.array([p_x + A * t, p_y + B * t])
 
-def get_overlap(min1, max1, min2, max2):
+def get_overlap(min1, max1, min2, max2, eps=1e-12):
     """Checks for 1D overlap between two ranges [min1, max1] and [min2, max2]."""
     return max(min1, min2) <= min(max1, max2)
+    # return max(min1, min2) < min(max1, max2) - eps
 
 def project_on_axis(points, axis):
     """
@@ -95,11 +96,12 @@ def do_faces_overlap(face1, face2):
     all_faces = [face1, face2]
     
     for points in all_faces:
+
         num_vertices = len(points)
-        
+
         for i in range(num_vertices):
             p1 = points[i]
-            p2 = points[(i + 1) % num_vertices] 
+            p2 = points[(i + 1) % num_vertices]
 
             dx = p2[0] - p1[0]
             dy = p2[1] - p1[1]
@@ -108,11 +110,9 @@ def do_faces_overlap(face1, face2):
 
             min1, max1 = project_on_axis(face1, axis)
             min2, max2 = project_on_axis(face2, axis)
-            
 
             if not get_overlap(min1, max1, min2, max2):
                 return False
-
 
     return True
 
