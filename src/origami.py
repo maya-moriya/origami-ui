@@ -486,7 +486,7 @@ class Origami:
         self._note_fold(edge, pos_to_fold)
         line, faces_split_info = self.fold_preparations(edge)
         v1_id, v2_id = edge
-        logging.debug(f"Folding along edge {edge} to the {pos_to_fold} side of the line.")
+        logging.debug(f"############# Folding along edge {edge} to the {pos_to_fold} side of the line #############")
         if pos_to_fold == 'on':
             raise ValueError("Vertex to fold lies on the crease line.")
         initial_faces_to_fold = self.get_crease_faces(v1_id, v2_id)
