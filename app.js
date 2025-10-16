@@ -26,6 +26,10 @@ class OrigamiUI {
         this.mousePos = { x: 0, y: 0 };
         this.previewSide = null; // 1 or -1 for fold preview
         
+        // Visibility options
+        this.showVertexIndexes = true;
+        this.showHiddenEdges = true;
+        
         // Special ratios to highlight
         this.specialRatios = [
             { value: 0.25, label: '0.25' },
@@ -87,6 +91,16 @@ class OrigamiUI {
         document.getElementById('flip-btn').addEventListener('click', () => this.flip());
         document.getElementById('undo-btn').addEventListener('click', () => this.undo());
         document.getElementById('reset-btn').addEventListener('click', () => this.reset());
+        
+        // Visibility checkboxes
+        document.getElementById('show-vertex-indexes').addEventListener('change', (e) => {
+            this.showVertexIndexes = e.target.checked;
+            this.draw();
+        });
+        document.getElementById('show-hidden-edges').addEventListener('change', (e) => {
+            this.showHiddenEdges = e.target.checked;
+            this.draw();
+        });
         
         // Window resize
         window.addEventListener('resize', () => {
@@ -205,12 +219,28 @@ class OrigamiUI {
         
         if (!face || face.length < 3) return;
         
-        
-        // Get face vertices
-        const points = face.map(vid => {
+        // Get face vertices in world coordinates
+        const worldVertices = face.map(vid => {
             const vertex = this.origamiData.vertices[vid];
-            return this.worldToCanvas(vertex[0], vertex[1]);
+            return { vid, pos: [vertex[0], vertex[1]] };
         });
+        
+        // Check if we need to split this face for fold preview
+        if (this.previewSide && this.foldOptions && this.selectedCrease) {
+            const facesToHighlight = this.previewSide === 1 ? this.foldOptions.faces_positive : this.foldOptions.faces_negative;
+            if (facesToHighlight.includes(parseInt(faceId))) {
+                this.drawSplitFace(worldVertices, orientation, this.foldOptions.line, this.previewSide);
+                return;
+            }
+        }
+        
+        // Draw normal face
+        this.drawNormalFace(worldVertices, orientation, faceId);
+    }
+    
+    drawNormalFace(worldVertices, orientation, faceId) {
+        // Convert to canvas coordinates
+        const points = worldVertices.map(v => this.worldToCanvas(v.pos[0], v.pos[1]));
         
         // Draw filled face
         this.ctx.beginPath();
@@ -220,33 +250,178 @@ class OrigamiUI {
         }
         this.ctx.closePath();
         
-        // Set fill color based on orientation and preview state
+        // Normal colors - orientation 0 = white, 1 = lightblue
         this.ctx.globalAlpha = 1.0;
+        const fillColor = orientation === 0 ? 'white' : 'lightblue';
+        this.ctx.fillStyle = fillColor;
         
-        // Check if this face should be highlighted for fold preview
-        let fillColor;
-        if (this.previewSide && this.foldOptions) {
-            const facesToHighlight = this.previewSide === 1 ? this.foldOptions.faces_positive : this.foldOptions.faces_negative;
-            if (facesToHighlight.includes(parseInt(faceId))) {
-                fillColor = 'rgba(239, 68, 68, 0.3)'; // Light red for fold preview
-            } else {
-                fillColor = orientation === 0 ? 'white' : 'lightblue';
-            }
-        } else {
-            // Normal colors - orientation 0 = white, 1 = lightblue
-            fillColor = orientation === 0 ? 'white' : 'lightblue';
+        // Debug logging for face rendering
+        if (faceId) {
+            console.log(`DEBUG: Rendering face ${faceId} with orientation ${orientation} as ${fillColor}`);
         }
         
-        this.ctx.fillStyle = fillColor;
         this.ctx.fill();
         
-        // Draw face border with modern styling
+        // Draw face border
         this.ctx.strokeStyle = '#374151';
         this.ctx.lineWidth = 1;
         this.ctx.stroke();
     }
     
+    drawSplitFace(worldVertices, orientation, line, previewSide) {
+        // Split the face along the crease line
+        const [A, B, C] = line;
+        
+        // Find vertices on the preview side and on the line
+        const verticesOnSide = [];
+        const verticesOnLine = [];
+        const intersections = [];
+        
+        for (const vertex of worldVertices) {
+            const d = A * vertex.pos[0] + B * vertex.pos[1] + C;
+            if (Math.abs(d) < 1e-5) {
+                verticesOnLine.push(vertex);
+            } else if ((d > 0 && previewSide === 1) || (d < 0 && previewSide === -1)) {
+                verticesOnSide.push(vertex);
+            }
+        }
+        
+        // Find intersections with face edges
+        for (let i = 0; i < worldVertices.length; i++) {
+            const v1 = worldVertices[i];
+            const v2 = worldVertices[(i + 1) % worldVertices.length];
+            
+            const d1 = A * v1.pos[0] + B * v1.pos[1] + C;
+            const d2 = A * v2.pos[0] + B * v2.pos[1] + C;
+            
+            // Check if edge crosses the line (different signs)
+            if (d1 * d2 < 0) {
+                const t = Math.abs(d1) / (Math.abs(d1) + Math.abs(d2));
+                const intersection = [
+                    v1.pos[0] + t * (v2.pos[0] - v1.pos[0]),
+                    v1.pos[1] + t * (v2.pos[1] - v1.pos[1])
+                ];
+                intersections.push({ pos: intersection });
+            }
+        }
+        
+        // Combine vertices: on-side vertices + vertices on line + intersections
+        const splitVertices = [...verticesOnSide, ...verticesOnLine, ...intersections];
+        
+        if (splitVertices.length < 3) {
+            // If we can't form a proper polygon, draw the whole face normally
+            this.drawNormalFace(worldVertices, orientation, 'split-fallback');
+            return;
+        }
+        
+        // Sort vertices to form a proper polygon (clockwise/counterclockwise)
+        const sortedVertices = this.sortVerticesForPolygon(splitVertices);
+        
+        // Draw the split part with highlight
+        const points = sortedVertices.map(v => this.worldToCanvas(v.pos[0], v.pos[1]));
+        
+        this.ctx.beginPath();
+        this.ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) {
+            this.ctx.lineTo(points[i].x, points[i].y);
+        }
+        this.ctx.closePath();
+        
+        // Highlight color for fold preview
+        this.ctx.globalAlpha = 1.0;
+        this.ctx.fillStyle = 'rgba(239, 68, 68, 0.3)';
+        this.ctx.fill();
+        
+        // Draw border
+        this.ctx.strokeStyle = '#374151';
+        this.ctx.lineWidth = 1;
+        this.ctx.stroke();
+        
+        // Also draw the remaining part with normal color
+        this.drawRemainingFacePart(worldVertices, line, previewSide, orientation);
+    }
+    
+    drawRemainingFacePart(worldVertices, line, previewSide, orientation) {
+        const [A, B, C] = line;
+        const oppositeSide = -previewSide;
+        
+        // Find vertices on the opposite side and on the line
+        const verticesOnOppositeSide = [];
+        const verticesOnLine = [];
+        const intersections = [];
+        
+        for (const vertex of worldVertices) {
+            const d = A * vertex.pos[0] + B * vertex.pos[1] + C;
+            if (Math.abs(d) < 1e-5) {
+                verticesOnLine.push(vertex);
+            } else if ((d > 0 && oppositeSide === 1) || (d < 0 && oppositeSide === -1)) {
+                verticesOnOppositeSide.push(vertex);
+            }
+        }
+        
+        // Find intersections with face edges (same logic as before)
+        for (let i = 0; i < worldVertices.length; i++) {
+            const v1 = worldVertices[i];
+            const v2 = worldVertices[(i + 1) % worldVertices.length];
+            
+            const d1 = A * v1.pos[0] + B * v1.pos[1] + C;
+            const d2 = A * v2.pos[0] + B * v2.pos[1] + C;
+            
+            if (d1 * d2 < 0) {
+                const t = Math.abs(d1) / (Math.abs(d1) + Math.abs(d2));
+                const intersection = [
+                    v1.pos[0] + t * (v2.pos[0] - v1.pos[0]),
+                    v1.pos[1] + t * (v2.pos[1] - v1.pos[1])
+                ];
+                intersections.push({ pos: intersection });
+            }
+        }
+        
+        const remainingVertices = [...verticesOnOppositeSide, ...verticesOnLine, ...intersections];
+        
+        if (remainingVertices.length < 3) return;
+        
+        const sortedVertices = this.sortVerticesForPolygon(remainingVertices);
+        const points = sortedVertices.map(v => this.worldToCanvas(v.pos[0], v.pos[1]));
+        
+        this.ctx.beginPath();
+        this.ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) {
+            this.ctx.lineTo(points[i].x, points[i].y);
+        }
+        this.ctx.closePath();
+        
+        // Normal color
+        this.ctx.globalAlpha = 1.0;
+        this.ctx.fillStyle = orientation === 0 ? 'white' : 'lightblue';
+        this.ctx.fill();
+        
+        // Draw border
+        this.ctx.strokeStyle = '#374151';
+        this.ctx.lineWidth = 1;
+        this.ctx.stroke();
+    }
+    
+    sortVerticesForPolygon(vertices) {
+        if (vertices.length < 3) return vertices;
+        
+        // Find centroid
+        const centroid = [
+            vertices.reduce((sum, v) => sum + v.pos[0], 0) / vertices.length,
+            vertices.reduce((sum, v) => sum + v.pos[1], 0) / vertices.length
+        ];
+        
+        // Sort by angle from centroid
+        return vertices.sort((a, b) => {
+            const angleA = Math.atan2(a.pos[1] - centroid[1], a.pos[0] - centroid[0]);
+            const angleB = Math.atan2(b.pos[1] - centroid[1], b.pos[0] - centroid[0]);
+            return angleA - angleB;
+        });
+    }
+    
     drawAllEdges() {
+        if (!this.showHiddenEdges) return;
+        
         const allEdges = this.origamiData.all_edges;
         
         this.ctx.strokeStyle = 'rgba(55, 65, 81, 0.2)';
@@ -322,6 +497,8 @@ class OrigamiUI {
     }
     
     drawSingleVertex(vid, worldPos) {
+        if (!this.showVertexIndexes) return; // Don't draw vertices if hidden
+        
         const pos = this.worldToCanvas(worldPos[0], worldPos[1]);
         const vertexId = parseInt(vid);
         
@@ -359,6 +536,8 @@ class OrigamiUI {
     }
     
     drawGroupedVertices(vids, worldPos) {
+        if (!this.showVertexIndexes) return; // Don't draw vertices if hidden
+        
         const pos = this.worldToCanvas(worldPos[0], worldPos[1]);
         const numVertices = vids.length;
         
@@ -510,13 +689,15 @@ class OrigamiUI {
             this.ctx.lineWidth = 2;
             this.ctx.stroke();
             
-            // Draw vertex ID
-            this.ctx.globalAlpha = 1;
-            this.ctx.fillStyle = '#374151';
-            this.ctx.font = '500 11px -apple-system, BlinkMacSystemFont, sans-serif';
-            this.ctx.textAlign = 'center';
-            this.ctx.textBaseline = 'middle';
-            this.ctx.fillText(this.getNextAvailableVertexId().toString(), previewX, previewY);
+            // Draw vertex ID (conditionally)
+            if (this.showVertexIndexes) {
+                this.ctx.globalAlpha = 1;
+                this.ctx.fillStyle = '#374151';
+                this.ctx.font = '500 11px -apple-system, BlinkMacSystemFont, sans-serif';
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+                this.ctx.fillText(this.getNextAvailableVertexId().toString(), previewX, previewY);
+            }
             
             // Draw ratio label if it's a special ratio
             if (specialRatio) {
@@ -736,15 +917,19 @@ class OrigamiUI {
     
     handleMouseDown(e) {
         const pos = this.getMousePos(e);
-        const vertex = this.findVertexAt(pos);
         
-        if (vertex) {
-            // Start dragging to create a crease
-            this.isDraggingCrease = true;
-            this.dragStart = this.worldToCanvas(...this.origamiData.vertices[vertex]);
-            this.dragStartVertex = vertex;
-            this.canvas.style.cursor = 'grabbing';
-            this.updateStatus('Drag to another vertex to create a crease line');
+        // Only allow vertex interactions if vertices are visible
+        if (this.showVertexIndexes) {
+            const vertex = this.findVertexAt(pos);
+            
+            if (vertex) {
+                // Start dragging to create a crease
+                this.isDraggingCrease = true;
+                this.dragStart = this.worldToCanvas(...this.origamiData.vertices[vertex]);
+                this.dragStartVertex = vertex;
+                this.canvas.style.cursor = 'grabbing';
+                this.updateStatus('Drag to another vertex to create a crease line');
+            }
         }
     }
     
@@ -814,8 +999,10 @@ class OrigamiUI {
         this.hoveredEdge = null;
         this.hoveredEdgeRatio = 0.5;
         
-        // Always check for vertex hover
-        this.hoveredVertex = this.findVertexAt(this.mousePos);
+        // Only check for vertex hover if vertices are visible
+        if (this.showVertexIndexes) {
+            this.hoveredVertex = this.findVertexAt(this.mousePos);
+        }
         
         // Check for edges only if not hovering a vertex and not in fold mode
         if (!this.hoveredVertex && !this.isDraggingCrease && !this.selectedCrease) {
@@ -843,6 +1030,7 @@ class OrigamiUI {
             
             if (result.success) {
                 this.foldOptions = result;
+                console.log(`DEBUG: Loaded fold options:`, this.foldOptions);
             } else {
                 this.updateStatus(`Error loading fold options: ${result.error}`);
             }
@@ -866,11 +1054,18 @@ class OrigamiUI {
         const d = A * worldPos.x + B * worldPos.y + C;
         const side = d > 1e-5 ? 1 : (d < -1e-5 ? -1 : 0);
         
+        console.log(`DEBUG: Mouse at world pos (${worldPos.x.toFixed(2)}, ${worldPos.y.toFixed(2)})`);
+        console.log(`DEBUG: Line equation: [${A.toFixed(4)}, ${B.toFixed(4)}, ${C.toFixed(4)}]`);
+        console.log(`DEBUG: Distance d = ${d.toFixed(6)}, side = ${side}`);
+        console.log(`DEBUG: Faces positive: [${this.foldOptions.faces_positive}], negative: [${this.foldOptions.faces_negative}]`);
+        
         // Check if mouse is inside any face to set preview
         if (side !== 0 && this.isPointInAnyFace(worldPos)) {
             this.previewSide = side;
+            console.log(`DEBUG: Preview side set to: ${this.previewSide}`);
         } else {
             this.previewSide = null;
+            console.log(`DEBUG: Preview side cleared (side=${side}, inFace=${this.isPointInAnyFace(worldPos)})`);
         }
     }
     
@@ -902,6 +1097,7 @@ class OrigamiUI {
     
     async performFold(edge, side) {
         try {
+            console.log(`DEBUG: Performing fold with edge [${edge}] and side ${side}`);
             this.updateStatus('Folding...');
             this.canvas.style.cursor = 'wait';
             this.canvas.style.pointerEvents = 'none';
@@ -921,6 +1117,28 @@ class OrigamiUI {
             
             if (result.success) {
                 this.origamiData = result.state;
+                console.log('DEBUG: Updated origami state after fold:', this.origamiData);
+                console.log('DEBUG: Face orientations:', this.origamiData.faces_orientations);
+                console.log('DEBUG: Faces:', this.origamiData.faces);
+                console.log('DEBUG: Layers:', this.origamiData.layers);
+                
+                // Debug face positions
+                console.log('DEBUG: Face positions:');
+                for (const [faceId, face] of Object.entries(this.origamiData.faces)) {
+                    const vertices = face.map(vid => {
+                        const v = this.origamiData.vertices[vid];
+                        return `${vid}:(${v[0].toFixed(1)},${v[1].toFixed(1)})`;
+                    }).join(', ');
+                    console.log(`  Face ${faceId}: [${vertices}] orientation:${this.origamiData.faces_orientations[faceId]}`);
+                }
+                
+                // Debug layer order
+                console.log('DEBUG: Layer rendering order (bottom to top):');
+                const sortedLayerKeys = Object.keys(this.origamiData.layers).sort((a, b) => parseInt(a) - parseInt(b));
+                for (const layerKey of sortedLayerKeys) {
+                    const facesInLayer = this.origamiData.layers[layerKey];
+                    console.log(`  Layer ${layerKey}: faces [${facesInLayer}]`);
+                }
                 this.updateVertexList();
                 this.resetInteractionState();
                 this.updateStatus('Fold completed successfully!');

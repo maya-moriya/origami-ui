@@ -152,14 +152,51 @@ def fold():
     edge = tuple(data['edge'])
     side = int(data['side'])  # 1 or -1
     
+    print(f"\n=== FOLD REQUEST ===")
+    print(f"Edge to fold: {edge}")
+    print(f"Side: {side}")
+    print(f"Current faces before fold: {origami.faces}")
+    print(f"Current orientations before fold: {origami.faces_orientations}")
+    print(f"Current layers before fold: {origami.layers}")
+    
+    # Convert side parameter to vertex parameter for fold_on_crease
+    # Find a vertex on the specified side of the line
+    from src.utils import get_line_equasion, point_position_to_line
+    v1_pos = origami.vertices[edge[0]]
+    v2_pos = origami.vertices[edge[1]]
+    line = get_line_equasion(v1_pos, v2_pos)
+    
+    # Find a vertex on the specified side
+    vertex_to_fold = None
+    for vid, vertex_pos in origami.vertices.items():
+        vertex_side = point_position_to_line(vertex_pos, line)
+        if vertex_side == side:
+            vertex_to_fold = vid
+            break
+    
+    if vertex_to_fold is None:
+        return jsonify({
+            'success': False,
+            'error': f'No vertex found on side {side} of the crease line'
+        })
+    
+    print(f"Using vertex {vertex_to_fold} for fold_on_crease (side {side})")
+    
     save_state()
     try:
-        origami.fold(edge, side)
+        origami.fold_on_crease(edge, vertex_to_fold)
+        print(f"Faces after fold: {origami.faces}")
+        print(f"Orientations after fold: {origami.faces_orientations}")
+        print(f"Layers after fold: {origami.layers}")
         return jsonify({
             'success': True,
             'state': get_origami_data()
         })
     except Exception as e:
+        print(f"Fold error: {type(e).__name__}: {str(e)}")
+        import traceback
+        print(f"Full traceback: {traceback.format_exc()}")
+        
         # Restore previous state on error
         if history:
             restore_state(history.pop())
