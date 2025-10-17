@@ -171,7 +171,7 @@ class Origami(OrigamiBase):
             if lid not in self.layers.keys():
                 logging.debug(f"Layer {lid} is not in layers, returning it.")
                 return lid
-            if self._face_overlap_with_layer(self.layers[lid], new_face):
+            if self._face_overlap_with_layer(lid, new_face):
                 logging.debug(f"Layer {lid} overlaps with new face {new_face}, checking next layer.")
                 lid += 1
             else:
@@ -192,7 +192,7 @@ class Origami(OrigamiBase):
 
     def _complete_faces(self, face1_set, face2_set):
         shared_vids = face1_set & face2_set
-        if len(shared_vids) == 2:
+        if len(shared_vids) in {1, 2}:
             shared_line = self._get_line_equation(*tuple(shared_vids))
             vids_side_map = self._vids_side_map(shared_line)
             face1_sign = self._all_vertices_on_one_side_of_line(face1_set, vids_side_map)
@@ -206,10 +206,10 @@ class Origami(OrigamiBase):
         """Check if a new face overlaps with any face in a layer."""
         logging.debug(f"Checking overlap of new face {new_face} with layer {layer} with faces {self.layers.get(layer, [])}")
 
-        layer = self.layers.get(layer, [])
-        logging.debug(f"Faces in layer {layer}: {[self.faces[fid] for fid in layer]}")
+        layer_faces = self.layers.get(layer, [])
+        logging.debug(f"Faces in layer {layer_faces}: {[self.faces[fid] for fid in layer_faces]}")
 
-        for fid in layer:
+        for fid in layer_faces:
             logging.debug(f"Checking face {fid} {self.faces[fid]} against new face {new_face}")
 
             face = self.faces[fid]
@@ -220,10 +220,10 @@ class Origami(OrigamiBase):
                 logging.debug(f"Face {fid} {self.faces[fid]} is identical to new face {new_face}")
                 return True
 
-            # Check if faces share exactly 2 vertices (an edge)
-            if self._complete_faces(face_set, new_face_set):
-                logging.debug(f"Face {fid} {self.faces[fid]} shares an edge with new face {new_face}, skipping overlap check.")
-                continue
+            # # Check if faces share exactly 2 vertices (an edge)
+            # if self._complete_faces(face_set, new_face_set):
+            #     logging.debug(f"Face {fid} {self.faces[fid]} shares an edge with new face {new_face}, skipping overlap check.")
+            #     continue
             face1 = [tuple(self.vertices[vid]) for vid in self.faces[fid]]
             face2 = [tuple(self.vertices[vid]) for vid in new_face]
             if do_faces_overlap(face1, face2):
@@ -408,18 +408,13 @@ class Origami(OrigamiBase):
                 return vid
         return None
 
-    def sss_reflect_face_vertices(self, folded_face, edge, line, vertices_sides, vertices_already_reflected):
+    def sss_face_vertices_to_reflect(self, folded_face, edge, line, vertices_sides, vertices_to_reflect):
         if edge is None:
             logging.debug(f" Reflecting all vertices of face {folded_face}")
         for vid in folded_face:
             if edge is None or (vid != edge[0] and vid != edge[1]):
-                if edge is not None:
-                    if vid != edge[0] and vid != edge[1]:
-                        logging.debug(f"Vertex {vid} is not on the edge {edge}")
-                if vid not in vertices_already_reflected:
-                    logging.debug(f" Reflecting vertex {vid} from side {vertices_sides[vid]} to side { -vertices_sides[vid] }")
-                    self._reflect_vertex(vid, line)
-                    vertices_already_reflected.add(vid) 
+                if vid not in vertices_to_reflect:
+                    vertices_to_reflect.add(vid)
 
     def sss_find_layer(self, folded_face):
         new_lid = 1
@@ -431,11 +426,14 @@ class Origami(OrigamiBase):
     
     def sss_fold_bunch(self, line, side_to_fold, bunch, sorted_faces, face_layer_map, vertices_sides):
         # Split each face if needed
-        vertices_already_reflected = set()
+        vertices_to_reflect = set()
 
+        folded_fids = []
+        folded_faces = []
+        folded_fids_orientations = []
+        new_fid = max(self.faces.keys()) + 1
         for fid in sorted_faces:
-            logging.debug(f"------- Processing face: {fid} -------")
-
+            logging.debug(f"############################################ Processing face: {fid} ############################################")
             if fid in bunch:
                 logging.debug(f"Face {fid} is in bunch")
 
@@ -447,11 +445,13 @@ class Origami(OrigamiBase):
 
                 if edge is None or self._edge_in_face(fid, edge):
                     logging.debug(f"No split needed only reflection")
-                    self.sss_reflect_face_vertices(self.faces[fid], edge, line, vertices_sides, vertices_already_reflected)
-                    new_lid = self.sss_find_layer(self.faces[fid])
-                    self.layers[new_lid] = self.layers.get(new_lid, []) + [fid]
+                    self.sss_face_vertices_to_reflect(self.faces[fid], edge, line, vertices_sides, vertices_to_reflect)
+                    folded_fids.append(fid)
+                    folded_faces.append(self.faces[fid])
+                    folded_fids_orientations.append(1 - self.faces_orientations[fid])
+                    logging.debug(f"Adding {fid} to folded fids : {folded_fids} {folded_faces} {folded_fids_orientations}")
                     self.layers[lid].remove(fid)
-                    self.faces_orientations[fid] = 1 - self.faces_orientations[fid]
+                    logging.debug(f"Removed face {fid} from layer {lid}")
 
                 else:
                     logging.debug(f"Face {fid} needs to be split along edge {edge}")
@@ -464,21 +464,43 @@ class Origami(OrigamiBase):
                     folded_face, staying_face = (face1, face2) if vertices_sides[vid] == side_to_fold else (face2, face1)
                     logging.debug(f"Folding face: {folded_face}, Staying face: {staying_face}")
 
-                    self.sss_reflect_face_vertices(folded_face, edge, line, vertices_sides, vertices_already_reflected)
+                    self.sss_face_vertices_to_reflect(folded_face, edge, line, vertices_sides, vertices_to_reflect)
                     
                     logging.debug(f"Replaces original fid {fid} with {staying_face} instead of {self.faces[fid]}")
                     self.faces[fid] = staying_face
                     
                     # Find new layer for the folded face
                     new_lid = self.sss_find_layer(folded_face)
-                    new_fid = max(self.faces.keys()) + 1
-                    self.faces[new_fid] = folded_face
-                    self.faces_orientations[new_fid] = 1 - self.faces_orientations[fid]
-                    self.layers[new_lid] = self.layers.get(new_lid, []) + [new_fid]
+
+                    folded_fids.append(new_fid)
+                    folded_faces.append(folded_face)
+                    folded_fids_orientations.append(1 - self.faces_orientations[fid])
+                    logging.debug(f"Adding {new_fid} to folded fids : {folded_fids} {folded_faces} {folded_fids_orientations}")
 
                     logging.debug(f"Updated faces: {self.faces}")
                     logging.debug(f"Updated faces orientations: {self.faces_orientations}")
                     logging.debug(f"Updated layers: {self.layers}")
+
+                    new_fid += 1
+
+        logging.debug(f"------------------------------------------- Vertices to reflect: {vertices_to_reflect} -------------------------------------------")
+        for vid in vertices_to_reflect:
+            logging.debug(f"Reflecting vertex {vid} at position {self.vertices[vid]} across line {line}")
+            self._reflect_vertex(vid, line)
+
+        logging.debug(f"------------------------------------------- Faces to update: {folded_fids} -------------------------------------------")
+        for fid, face, orientation in zip(folded_fids, folded_faces, folded_fids_orientations):
+            logging.debug(f"Adding folded face {fid} {face} with orientation {orientation}")
+            new_lid = self.sss_find_layer(face)
+            logging.debug(f" New layer for folded face {fid}: {new_lid}")
+            if fid not in self.faces:
+                logging.debug(f" Adding new folded face {fid} to faces")
+                self.faces[fid] = face
+            logging.debug(f" Adding folded face {fid} to layer {new_lid}")
+            self.layers[new_lid] = self.layers.get(new_lid, []) + [fid]
+            logging.debug(f" Updated orientations: {orientation}")
+            self.faces_orientations[fid] = orientation
+
             
 
     def sss_fold_by_edge_and_vertex(self, edge, vertex_on_side_to_fold):

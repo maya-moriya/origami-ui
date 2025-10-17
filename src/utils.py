@@ -65,10 +65,13 @@ def reflect_point(point, line_eq):
     t = -2 * (A * p_x + B * p_y + C) / denominator
     return np.array([p_x + A * t, p_y + B * t])
 
-def get_overlap(min1, max1, min2, max2, eps=1e-12):
-    """Checks for 1D overlap between two ranges [min1, max1] and [min2, max2]."""
-    return max(min1, min2) <= min(max1, max2)
-    # return max(min1, min2) < min(max1, max2) - eps
+def get_overlap(min1, max1, min2, max2, eps=1e-9):
+    """Checks for 1D overlap between two ranges [min1, max1] and [min2, max2].
+    
+    Returns True only if there is actual overlap (shared interior), not just touching at boundaries.
+    Uses epsilon to handle floating-point precision issues.
+    """
+    return max(min1, min2) < min(max1, max2) - eps
 
 def project_on_axis(points, axis):
     """
@@ -90,7 +93,8 @@ def do_faces_overlap(face1, face2):
     
     :param face1: List of points [(x1, y1), ..., (xN, yN)] for the first polygon.
     :param face2: List of points [(x1, y1), ..., (xM, yM)] for the second polygon.
-    :return: True if the faces overlap, False otherwise.
+    :return: True if the faces overlap (have shared interior area), False otherwise.
+             Returns False if faces only touch at edges or vertices.
     """
         
     all_faces = [face1, face2]
