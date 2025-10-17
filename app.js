@@ -996,6 +996,7 @@ class OrigamiUI {
         let angle = Math.atan2(dy, dx) * 180 / Math.PI;
         // Normalize angle to 0-360 degrees
         if (angle < 0) angle *= -1;
+        if (angle > 180) angle = 360 - angle;
         return angle;
     }
     
