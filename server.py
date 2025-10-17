@@ -132,12 +132,12 @@ def fold_options():
     edge = tuple(data['edge'])
     
     try:
-        line, faces_split_info, faces_to_fold_positive, faces_to_fold_negative = origami.get_two_fold_options(edge)
+        line, bunch_positive, bunch_negative, sorted_faces, face_layer_map, vertices_sides, vertices_faces = origami.sss_ui_pre_fold(edge)
         return jsonify({
             'success': True,
             'line': line,
-            'faces_positive': list(faces_to_fold_positive),
-            'faces_negative': list(faces_to_fold_negative)
+            'faces_positive': list(bunch_positive),
+            'faces_negative': list(bunch_negative)
         })
     except Exception as e:
         return jsonify({
@@ -161,7 +161,7 @@ def fold():
     
     # Convert side parameter to vertex parameter for fold_on_crease
     # Find a vertex on the specified side of the line
-    from utils import get_line_equasion, point_position_to_line
+    from utils import get_line_equasion, point_side_to_line
     v1_pos = origami.vertices[edge[0]]
     v2_pos = origami.vertices[edge[1]]
     line = get_line_equasion(v1_pos, v2_pos)
@@ -169,7 +169,7 @@ def fold():
     # Find a vertex on the specified side
     vertex_to_fold = None
     for vid, vertex_pos in origami.vertices.items():
-        vertex_side = point_position_to_line(vertex_pos, line)
+        vertex_side = point_side_to_line(vertex_pos, line)
         if vertex_side == side:
             vertex_to_fold = vid
             break
@@ -184,7 +184,7 @@ def fold():
     
     save_state()
     try:
-        origami.fold_on_crease(edge, vertex_to_fold)
+        origami.sss_fold_by_edge_and_vertex(edge, vertex_to_fold)
         print(f"Faces after fold: {origami.faces}")
         print(f"Orientations after fold: {origami.faces_orientations}")
         print(f"Layers after fold: {origami.layers}")

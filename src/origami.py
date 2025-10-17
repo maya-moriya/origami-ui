@@ -503,6 +503,17 @@ class Origami(OrigamiBase):
             logging.debug(f" Updated orientations: {orientation}")
             self.faces_orientations[fid] = orientation            
 
+    def sss_ui_pre_fold(self, edge):
+        line = self._get_line_equation(*edge)
+        sorted_faces, face_layer_map, vertices_sides, vertices_faces = self.sss_collect_info_for_fold(line)
+        bunch_positive, sorted_faces, face_layer_map, vertices_sides, vertices_faces = self.sss_collect_info_and_get_highest_bunch(line, 1)
+        bunch_negative, sorted_faces, face_layer_map, vertices_sides, vertices_faces = self.sss_collect_info_and_get_highest_bunch(line, -1)
+        return line, bunch_positive, bunch_negative, sorted_faces, face_layer_map, vertices_sides, vertices_faces
+    
+
+
+
+
     def sss_fold_by_edge_and_vertex(self, edge, vertex_on_side_to_fold):
         logging.debug(f"Folding by edge {edge} and vertex {vertex_on_side_to_fold}")
         self._check_vid_exists(vertex_on_side_to_fold)
