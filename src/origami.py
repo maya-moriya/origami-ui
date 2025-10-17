@@ -501,9 +501,7 @@ class Origami(OrigamiBase):
             logging.debug(f" Adding folded face {fid} to layer {new_lid}")
             self.layers[new_lid] = self.layers.get(new_lid, []) + [fid]
             logging.debug(f" Updated orientations: {orientation}")
-            self.faces_orientations[fid] = orientation
-
-            
+            self.faces_orientations[fid] = orientation            
 
     def sss_fold_by_edge_and_vertex(self, edge, vertex_on_side_to_fold):
         logging.debug(f"Folding by edge {edge} and vertex {vertex_on_side_to_fold}")
@@ -514,29 +512,16 @@ class Origami(OrigamiBase):
         self.sss_fold_highest_bunch(line, side_to_fold)
 
     def sss_fold_highest_bunch(self, line, side_to_fold=1):
-        bunch, sorted_faces, face_layer_map, vertices_sides, vertices_faces = self.get_highest_bunch(line, side_to_fold)
+        bunch, sorted_faces, face_layer_map, vertices_sides, vertices_faces = self.sss_collect_info_and_get_highest_bunch(line, side_to_fold)
         logging.debug(f"Bunch to fold: {bunch}")
         self.sss_fold_bunch(line, side_to_fold, bunch, sorted_faces, face_layer_map, vertices_sides)
         logging.debug(f"Finished folding bunch")
 
-    def pre_fold_information(self, line):
-        sorted_faces, face_layer_map = self._sort_faces_by_layers(self.faces.keys())
-        initial_fid_pos, edge_pos = self.sss_get_highest_cutted_face(sorted_faces, line, 1)
-        initial_fid_neg, edge_neg = self.sss_get_highest_cutted_face(sorted_faces, line, -1)
-        return initial_fid_pos, initial_fid_neg
-
-    def get_highest_bunch(self, line, side_to_fold=1):
-
-        # Collect all faces from the toppest layer
-        sorted_faces, face_layer_map = self._sort_faces_by_layers(self.faces.keys())
-        vertices_sides = self._vids_side_map(line)
-        vertices_faces = self._face_vertex_map()
-
-        logging.debug(f"faces: {self.faces}")
-        logging.debug(f"Sorted faces by layers: {sorted_faces}")
-        logging.debug(f"Face layer map: {face_layer_map}")
-        logging.debug(f"Vertices sides map: {vertices_sides}")
-        logging.debug(f"Vertices faces map: {vertices_faces}")
+    def sss_collect_info_and_get_highest_bunch(self, line, side_to_fold=1):
+        sorted_faces, face_layer_map, vertices_sides, vertices_faces = self.sss_collect_info_for_fold(line)
+        return self.sss_get_highest_bunch(line, sorted_faces, face_layer_map, vertices_sides, vertices_faces, side_to_fold)
+    
+    def sss_get_highest_bunch(self, line, sorted_faces, face_layer_map, vertices_sides, vertices_faces, side_to_fold=1):
 
         initial_fid, edge = self.sss_get_highest_cutted_face(sorted_faces, line, side_to_fold)
         logging.debug(f"Initial face to fold: {initial_fid} with edge {edge}")
@@ -549,6 +534,23 @@ class Origami(OrigamiBase):
         logging.debug(f"Bunch of faces to fold: {bunch}")
 
         return bunch, sorted_faces, face_layer_map, vertices_sides, vertices_faces
+    
+    def sss_collect_info_for_fold(self, line):
+        # Collect all faces from the toppest layer
+        sorted_faces, face_layer_map = self._sort_faces_by_layers(self.faces.keys())
+        vertices_sides = self._vids_side_map(line)
+        vertices_faces = self._face_vertex_map()
+
+        logging.debug(f"faces: {self.faces}")
+        logging.debug(f"Sorted faces by layers: {sorted_faces}")
+        logging.debug(f"Face layer map: {face_layer_map}")
+        logging.debug(f"Vertices sides map: {vertices_sides}")
+        logging.debug(f"Vertices faces map: {vertices_faces}")
+
+        return sorted_faces, face_layer_map, vertices_sides, vertices_faces
+
+
+
 
     def get_crease_faces(self, v1_id: int, v2_id: int, vertex_to_fold: Optional[int] = None) -> List[int]:
         """Get faces that contain the crease edge or are affected by it."""
