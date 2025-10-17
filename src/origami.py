@@ -307,13 +307,16 @@ class Origami(OrigamiBase):
 
     # ===== FOLDING OPERATIONS =====
 
-    def sss_get_highest_cutted_face(self, sorted_faces, line):
+    def sss_get_highest_cutted_face(self, sorted_faces, line, side_to_fold):
         for fid in sorted_faces:
             logging.debug(f"Checking face {fid} {self.faces[fid]} for cutting by line {line}")
             edge = self._cut_face_along_line(line, fid)
-            logging.debug(f" Cut edge for face {fid}: {edge}")
+            # if edge is not None and not self._edge_in_face(fid, edge):
             if edge is not None:
-                return fid, edge
+                vids_sides = self._side_vids_map_by_fid(fid, line)
+                if len(vids_sides[side_to_fold]) > 0:
+                    logging.debug(f" Cut edge for face {fid}: {edge}")
+                    return fid, edge
 
     def sss_get_one_deep_chained_faces(self, initial_fid, fold_side, vertices_sides, vertices_faces):
         logging.debug(f"Finding one-deep chained faces for initial face {initial_fid} on side {fold_side}")
@@ -326,7 +329,7 @@ class Origami(OrigamiBase):
         for vid in face_vertices_on_side:
             for fid in vertices_faces[vid]:
                 logging.debug(f" Found face {fid} for vertex {vid} on side {fold_side}")
-                if fid != initial_fid:
+                if fid not in bunch_fids:
                     logging.debug(f" Adding face {fid} to bunch")
                     bunch_fids.add(fid)
         
@@ -356,16 +359,15 @@ class Origami(OrigamiBase):
         logging.debug(f"Final chained faces for {initial_fid}: {bunch_fids}")
         return bunch_fids
     
-    def sss_update_intermidiate_faces(self, set_of_faces, faces_already_checked, vids_side_map):
+    def sss_update_intermidiate_faces(self, set_of_faces, faces_already_checked, vids_side_map, side_to_fold):
         min_layer = self._get_min_layer_in_faces(set_of_faces)
         logging.debug(f"Updating intermidiate faces from layer {min_layer} and above")
 
         for lid in self.layers.keys():
             if lid >= min_layer:
                 for fid in self.layers[lid]:
-                    pos_vids = [vid for vid in self.faces[fid] if vids_side_map[vid] == 1]
-                    neg_vids = [vid for vid in self.faces[fid] if vids_side_map[vid] == -1]
-                    if len(pos_vids) > 0 and len(neg_vids) > 0:
+                    vids_on_side_to_fold = [vid for vid in self.faces[fid] if vids_side_map[vid] == side_to_fold]
+                    if len(vids_on_side_to_fold) > 0:
                         if fid not in faces_already_checked:
                             set_of_faces.add(fid)
                             faces_already_checked.add(fid)
@@ -394,7 +396,7 @@ class Origami(OrigamiBase):
                     logging.debug(f" Found new chained faces: {new_fids}")
 
                     bunch_fids.update(new_fids)
-                    new_fids = self.sss_update_intermidiate_faces(bunch_fids, faces_already_checked, vertices_sides)
+                    new_fids = self.sss_update_intermidiate_faces(bunch_fids, faces_already_checked, vertices_sides, side_to_fold)
                     logging.debug(f" Updated bunch with intermidiate faces: {new_fids}")
 
                     bunch_fids.update(new_fids)
@@ -517,6 +519,12 @@ class Origami(OrigamiBase):
         self.sss_fold_bunch(line, side_to_fold, bunch, sorted_faces, face_layer_map, vertices_sides)
         logging.debug(f"Finished folding bunch")
 
+    def pre_fold_information(self, line):
+        sorted_faces, face_layer_map = self._sort_faces_by_layers(self.faces.keys())
+        initial_fid_pos, edge_pos = self.sss_get_highest_cutted_face(sorted_faces, line, 1)
+        initial_fid_neg, edge_neg = self.sss_get_highest_cutted_face(sorted_faces, line, -1)
+        return initial_fid_pos, initial_fid_neg
+
     def get_highest_bunch(self, line, side_to_fold=1):
 
         # Collect all faces from the toppest layer
@@ -530,8 +538,12 @@ class Origami(OrigamiBase):
         logging.debug(f"Vertices sides map: {vertices_sides}")
         logging.debug(f"Vertices faces map: {vertices_faces}")
 
-        initial_fid, edge = self.sss_get_highest_cutted_face(sorted_faces, line)
+        initial_fid, edge = self.sss_get_highest_cutted_face(sorted_faces, line, side_to_fold)
         logging.debug(f"Initial face to fold: {initial_fid} with edge {edge}")
+        
+        # After cutting, update vertices_sides and vertices_faces to include any new vertices created
+        vertices_sides = self._vids_side_map(line)
+        vertices_faces = self._face_vertex_map()
 
         bunch = self.sss_get_bunch_from_top(initial_fid, vertices_sides, vertices_faces, side_to_fold)
         logging.debug(f"Bunch of faces to fold: {bunch}")
@@ -573,6 +585,14 @@ class Origami(OrigamiBase):
             vids_side_map[vid] = side
         logging.debug(f"Vertices side map: {vids_side_map}")
         return vids_side_map
+    
+    def _side_vids_map_by_fid(self, fid, line):
+        side_vids_map = {1: [], -1: [], 0: []}
+        for vid in self.faces[fid]:
+            side = self._get_vertex_side_to_line(vid, line)
+            side_vids_map[side].append(vid)
+        logging.debug(f"Sides vertices map of face {fid}: {side_vids_map}")
+        return side_vids_map
 
     def update_vertices_side_map(self, line, existing_map):
         new_vertices = set(self.vertices.keys()) - set(existing_map.keys())
