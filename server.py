@@ -15,28 +15,33 @@ CORS(app)
 # Global origami instance and history for undo functionality
 origami = Origami(size=10.0)
 history = []
+fold_cache = {}
 
 def save_state():
     """Save current origami state to history for undo functionality"""
+    import copy
     state = {
         'vertices': {k: v.tolist() for k, v in origami.vertices.items()},
-        'faces': origami.faces.copy(),
+        'faces': copy.deepcopy(origami.faces),
         'faces_orientations': origami.faces_orientations.copy(),
-        'layers': origami.layers.copy(),
-        'edges_splits': origami.edges_splits.copy(),
-        'actions': origami.actions.copy()
+        'layers': copy.deepcopy(origami.layers),
+        'edges_splits': copy.deepcopy(origami.edges_splits),
+        'actions': copy.deepcopy(origami.actions)
     }
-    history.append(json.loads(json.dumps(state)))  # Deep copy
+    # Use deep copy directly instead of JSON serialization to preserve integer keys
+    history.append(copy.deepcopy(state))
 
 def restore_state(state):
     """Restore origami state from history"""
     import numpy as np
-    origami.vertices = {k: np.array(v) for k, v in state['vertices'].items()}
-    origami.faces = state['faces']
-    origami.faces_orientations = state['faces_orientations']
-    origami.layers = state['layers']
-    origami.edges_splits = state['edges_splits']
-    origami.actions = state['actions']
+    import copy
+    # Restore all attributes, ensuring integer keys are preserved
+    origami.vertices = {int(k): np.array(v) for k, v in state['vertices'].items()}
+    origami.faces = {int(k): copy.deepcopy(v) for k, v in state['faces'].items()}
+    origami.faces_orientations = {int(k): v for k, v in state['faces_orientations'].items()}
+    origami.layers = {int(k): copy.deepcopy(v) for k, v in state['layers'].items()}
+    origami.edges_splits = copy.deepcopy(state['edges_splits'])
+    origami.actions = copy.deepcopy(state['actions'])
 
 def get_origami_data():
     """Convert origami state to JSON-serializable format"""
