@@ -317,6 +317,10 @@ class Origami(OrigamiBase):
                 if len(vids_sides[side_to_fold]) > 0:
                     logging.debug(f" Cut edge for face {fid}: {edge}")
                     return fid, edge
+        
+        # No face found to cut on the specified side
+        logging.debug(f"No face found to cut on side {side_to_fold}")
+        return None, None
 
     def sss_get_one_deep_chained_faces(self, initial_fid, fold_side, vertices_sides, vertices_faces):
         logging.debug(f"Finding one-deep chained faces for initial face {initial_fid} on side {fold_side}")
@@ -535,6 +539,12 @@ class Origami(OrigamiBase):
     def sss_get_highest_bunch(self, line, sorted_faces, face_layer_map, vertices_sides, vertices_faces, side_to_fold=1):
 
         initial_fid, edge = self.sss_get_highest_cutted_face(sorted_faces, line, side_to_fold)
+        
+        # If no face can be cut on this side, return empty bunch
+        if initial_fid is None:
+            logging.debug(f"No face found to fold on side {side_to_fold}")
+            return set(), sorted_faces, face_layer_map, vertices_sides, vertices_faces
+        
         logging.debug(f"Initial face to fold: {initial_fid} with edge {edge}")
         
         # After cutting, update vertices_sides and vertices_faces to include any new vertices created
